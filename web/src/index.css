@@ -1,0 +1,48 @@
+/* Leaflet CSS */
+@import 'leaflet/dist/leaflet.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom styles */
+.map-container {
+  height: 100vh;
+  width: 100%;
+}
+
+.sidebar {
+  min-width: 320px;
+  max-width: 400px;
+}
+
+/* Custom marker styles */
+.custom-marker {
+  background: none !important;
+  border: none !important;
+}
+
+.center-marker {
+  background: none !important;
+  border: none !important;
+}
+
+/* Enhanced popup styles */
+.location-popup .leaflet-popup-content,
+.center-popup .leaflet-popup-content,
+.area-popup .leaflet-popup-content {
+  margin: 0 !important;
+}
+
+.location-popup .leaflet-popup-content-wrapper,
+.center-popup .leaflet-popup-content-wrapper,
+.area-popup .leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.location-popup .leaflet-popup-tip,
+.center-popup .leaflet-popup-tip,
+.area-popup .leaflet-popup-tip {
+  background: white;
+}
