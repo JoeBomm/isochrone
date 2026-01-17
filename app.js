@@ -27,11 +27,11 @@ function addLocation() {
     }
     
     // Check if it's coordinates (lat,lng)
-    const coordMatch = locationText.match(/^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)$/);
+    const coordMatch = locationText.match(/^(-?\d+(\.\d+)?),\s*(-?\d+(\.\d+)?)$/);
     
     if (coordMatch) {
         const lat = parseFloat(coordMatch[1]);
-        const lng = parseFloat(coordMatch[2]);
+        const lng = parseFloat(coordMatch[3]);
         
         if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
             addLocationToMap(lat, lng, locationText);
@@ -181,11 +181,11 @@ async function calculateIsochrones() {
     showMessage(`Calculating isochrones for ${locations.length} location(s)...`, 'info');
     
     try {
-        // Calculate isochrone for each location
-        for (let i = 0; i < locations.length; i++) {
-            const loc = locations[i];
-            await calculateSingleIsochrone(loc, timeRange, profile);
-        }
+        // Calculate isochrone for each location in parallel for better performance
+        const promises = locations.map(loc => 
+            calculateSingleIsochrone(loc, timeRange, profile)
+        );
+        await Promise.all(promises);
         
         showMessage(`Successfully calculated isochrones for ${locations.length} location(s)!`, 'info');
     } catch (error) {
@@ -202,8 +202,10 @@ async function calculateIsochrones() {
  * Calculate isochrone for a single location using OpenRouteService API
  */
 async function calculateSingleIsochrone(location, timeRange, profile) {
-    // Note: This uses the public OpenRouteService API demo endpoint
-    // For production use, sign up for a free API key at https://openrouteservice.org/
+    // Note: This uses a demo API key. For production use:
+    // 1. Sign up for a free API key at https://openrouteservice.org/
+    // 2. Replace the API key below with your own key
+    // 3. For better security, consider implementing a backend proxy
     const apiKey = '5b3ce3597851110001cf6248a9f15f1bc1cd47b4a7ec81df19db55d2';
     
     const url = `https://api.openrouteservice.org/v2/isochrones/${profile}`;

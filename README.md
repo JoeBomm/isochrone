@@ -81,7 +81,7 @@ For production use or heavy usage, get a free API key:
 1. Visit [https://openrouteservice.org/dev/#/signup](https://openrouteservice.org/dev/#/signup)
 2. Sign up for a free account
 3. Get your API key from the dashboard
-4. Replace the `apiKey` value in `app.js` (line 221)
+4. Replace the `apiKey` value in `app.js` (around line 207)
 
 Free tier includes:
 - 2,000 requests per day
