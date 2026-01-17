@@ -1,10 +1,11 @@
 import * as fc from 'fast-check'
-import { calculateIsochronicCenter } from './isochrones'
+import { calculateMinimaxCenter } from './isochrones'
 
 // Mock the cached OpenRoute client
 jest.mock('src/lib/cachedOpenroute', () => ({
   cachedOpenRouteClient: {
     calculateIsochrone: jest.fn(),
+    calculateTravelTimeMatrix: jest.fn(),
   }
 }))
 
@@ -14,6 +15,10 @@ jest.mock('src/lib/geometry', () => ({
     validatePolygonOverlap: jest.fn(),
     calculatePolygonUnion: jest.fn(),
     calculateCentroid: jest.fn(),
+    calculateGeographicCentroid: jest.fn(),
+    calculateMedianCoordinate: jest.fn(),
+    calculatePairwiseMidpoints: jest.fn(),
+    validateCoordinateBounds: jest.fn(),
   }
 }))
 
@@ -24,17 +29,47 @@ const mockCachedOpenRouteClient = cachedOpenRouteClient as jest.Mocked<typeof ca
 const mockGeometryService = geometryService as jest.Mocked<typeof geometryService>
 
 /**
- * Property-based tests for isochronic center validation
- * Feature: isochrone-center-point, Property 5: Isochronic Center Validation
+ * Property-based tests for minimax center validation
+ * Feature: isochrone-center-point, Property 5: Minimax Center Validation
  * Validates: Requirements 5.1
  */
 
-// Generator for valid location inputs
+// Generator for valid location inputs with unique coordinates
 const locationArbitrary = fc.record({
   name: fc.string({ minLength: 1, maxLength: 20 }),
-  latitude: fc.integer({ min: -90, max: 90 }),
-  longitude: fc.integer({ min: -180, max: 180 })
+  latitude: fc.float({ min: -80, max: 80, noNaN: true }).filter(lat => Math.abs(lat) > 0.1), // Avoid poles and origin
+  longitude: fc.float({ min: -170, max: 170, noNaN: true }).filter(lng => Math.abs(lng) > 0.1) // Avoid antimeridian and origin
 })
+
+// Generator for arrays of unique locations (no duplicates)
+const uniqueLocationsArbitrary = (minLength: number, maxLength: number) =>
+  fc.array(locationArbitrary, { minLength, maxLength })
+    .map(locations => {
+      // Remove duplicates by coordinate with minimum distance requirement
+      const seen = new Set<string>()
+      const filtered = locations.filter(loc => {
+        // Round coordinates to avoid floating point precision issues
+        const roundedLat = Math.round(loc.latitude * 1000) / 1000
+        const roundedLng = Math.round(loc.longitude * 1000) / 1000
+        const key = `${roundedLat},${roundedLng}`
+
+        if (seen.has(key)) return false
+
+        // Check minimum distance from existing locations (at least 1 degree apart)
+        for (const existingKey of seen) {
+          const [existingLat, existingLng] = existingKey.split(',').map(Number)
+          const distance = Math.sqrt(
+            Math.pow(roundedLat - existingLat, 2) + Math.pow(roundedLng - existingLng, 2)
+          )
+          if (distance < 1.0) return false // Require at least 1 degree separation
+        }
+
+        seen.add(key)
+        return true
+      })
+      return filtered
+    })
+    .filter(locations => locations.length >= minLength) // Ensure we still have enough after deduplication
 
 // Generator for valid travel modes
 const travelModeArbitrary = fc.constantFrom('DRIVING_CAR', 'CYCLING_REGULAR', 'FOOT_WALKING')
@@ -51,23 +86,47 @@ describe('Isochrone Service Property Tests', () => {
 
     // Set up default mock implementations
     mockCachedOpenRouteClient.calculateIsochrone.mockResolvedValue(mockPolygon)
+
+    // Mock travel time matrix with valid data
+    mockCachedOpenRouteClient.calculateTravelTimeMatrix.mockResolvedValue({
+      origins: [
+        { latitude: 40.7128, longitude: -74.0060 },
+        { latitude: 40.7589, longitude: -73.9851 }
+      ],
+      destinations: [
+        { latitude: 40.7359, longitude: -73.9906 },
+        { latitude: 40.7505, longitude: -73.9934 },
+        { latitude: 40.7128, longitude: -74.0060 },
+        { latitude: 40.7589, longitude: -73.9851 },
+        { latitude: 40.7439, longitude: -73.9928 }
+      ],
+      travelTimes: [
+        [15, 12, 0, 8, 10],  // From origin 0 to all destinations
+        [18, 10, 8, 0, 5]    // From origin 1 to all destinations
+      ]
+    })
+
     mockGeometryService.validatePolygonOverlap.mockReturnValue(true)
     mockGeometryService.calculatePolygonUnion.mockReturnValue(mockPolygon)
     mockGeometryService.calculateCentroid.mockReturnValue({ latitude: 0.5, longitude: 0.5 })
+
+    // Mock hypothesis point generation methods
+    mockGeometryService.calculateGeographicCentroid.mockReturnValue({ latitude: 40.7359, longitude: -73.9906 })
+    mockGeometryService.calculateMedianCoordinate.mockReturnValue({ latitude: 40.7505, longitude: -73.9934 })
+    mockGeometryService.calculatePairwiseMidpoints.mockReturnValue([{ latitude: 40.7439, longitude: -73.9928 }])
+    mockGeometryService.validateCoordinateBounds.mockReturnValue(true)
   })
 
-  describe('Property 5: Isochronic Center Validation', () => {
+  describe('Property 5: Minimax Center Validation', () => {
     it('should validate minimum location requirements consistently', async () => {
       await fc.assert(fc.asyncProperty(
         fc.array(locationArbitrary, { minLength: 0, maxLength: 1 }),
-        fc.integer({ min: 1, max: 60 }),
         travelModeArbitrary,
         fc.integer({ min: 5, max: 60 }),
-        async (locations, travelTimeMinutes, travelMode, bufferTimeMinutes) => {
+        async (locations, travelMode, bufferTimeMinutes) => {
           // For locations with less than 2 items, should always throw validation error
-          await expect(calculateIsochronicCenter({
+          await expect(calculateMinimaxCenter({
             locations,
-            travelTimeMinutes,
             travelMode: travelMode as any,
             bufferTimeMinutes
           })).rejects.toThrow(/at least 2 locations/i)
@@ -81,14 +140,12 @@ describe('Isochrone Service Property Tests', () => {
     it('should validate maximum location limits consistently', async () => {
       await fc.assert(fc.asyncProperty(
         fc.array(locationArbitrary, { minLength: 13, maxLength: 20 }),
-        fc.integer({ min: 1, max: 60 }),
         travelModeArbitrary,
         fc.integer({ min: 5, max: 60 }),
-        async (locations, travelTimeMinutes, travelMode, bufferTimeMinutes) => {
+        async (locations, travelMode, bufferTimeMinutes) => {
           // For locations with more than 12 items, should always throw validation error
-          await expect(calculateIsochronicCenter({
+          await expect(calculateMinimaxCenter({
             locations,
-            travelTimeMinutes,
             travelMode: travelMode as any,
             bufferTimeMinutes
           })).rejects.toThrow(/Maximum of 12 locations supported/i)
@@ -102,17 +159,15 @@ describe('Isochrone Service Property Tests', () => {
     it('should validate buffer time boundaries consistently', async () => {
       await fc.assert(fc.asyncProperty(
         fc.array(locationArbitrary, { minLength: 2, maxLength: 5 }),
-        fc.integer({ min: 1, max: 60 }),
         travelModeArbitrary,
         fc.oneof(
           fc.integer({ min: -10, max: 4 }), // Invalid: too low
           fc.integer({ min: 61, max: 100 }) // Invalid: too high
         ),
-        async (locations, travelTimeMinutes, travelMode, bufferTimeMinutes) => {
+        async (locations, travelMode, bufferTimeMinutes) => {
           // For invalid buffer times, should always throw validation error
-          await expect(calculateIsochronicCenter({
+          await expect(calculateMinimaxCenter({
             locations,
-            travelTimeMinutes,
             travelMode: travelMode as any,
             bufferTimeMinutes
           })).rejects.toThrow(/buffer time must be between 5 and 60/i)
@@ -126,34 +181,33 @@ describe('Isochrone Service Property Tests', () => {
     it('should handle travel mode validation consistently', async () => {
       await fc.assert(fc.asyncProperty(
         fc.array(locationArbitrary, { minLength: 2, maxLength: 5 }),
-        fc.integer({ min: 1, max: 60 }),
         fc.string({ minLength: 1 }).filter(s => !['DRIVING_CAR', 'CYCLING_REGULAR', 'FOOT_WALKING'].includes(s)),
         fc.integer({ min: 5, max: 60 }),
-        async (locations, travelTimeMinutes, invalidTravelMode, bufferTimeMinutes) => {
+        async (locations, invalidTravelMode, bufferTimeMinutes) => {
           // For invalid travel modes, should always throw specific validation error
-          await expect(calculateIsochronicCenter({
+          await expect(calculateMinimaxCenter({
             locations,
-            travelTimeMinutes,
             travelMode: invalidTravelMode as any,
             bufferTimeMinutes
           })).rejects.toThrow(/Invalid travel mode selected/i)
 
-          // Should not call geometry services for early validation errors
-          expect(mockGeometryService.validatePolygonOverlap).not.toHaveBeenCalled()
+          // Should not call matrix services for early validation errors
+          expect(mockCachedOpenRouteClient.calculateTravelTimeMatrix).not.toHaveBeenCalled()
         }
       ), { numRuns: 50 })
     })
 
-    it('should successfully calculate center for valid inputs', async () => {
+    it('should successfully calculate center for valid inputs with fallback', async () => {
       await fc.assert(fc.asyncProperty(
-        fc.array(locationArbitrary, { minLength: 2, maxLength: 5 }),
-        fc.integer({ min: 1, max: 60 }),
+        uniqueLocationsArbitrary(2, 5),
         travelModeArbitrary,
         fc.integer({ min: 5, max: 60 }),
-        async (locations, travelTimeMinutes, travelMode, bufferTimeMinutes) => {
-          const result = await calculateIsochronicCenter({
+        async (locations, travelMode, bufferTimeMinutes) => {
+          // Skip if we don't have enough unique locations after deduplication
+          if (locations.length < 2) return
+
+          const result = await calculateMinimaxCenter({
             locations,
-            travelTimeMinutes,
             travelMode: travelMode as any,
             bufferTimeMinutes
           })
@@ -167,36 +221,8 @@ describe('Isochrone Service Property Tests', () => {
           expect(result.centerPoint).toHaveProperty('longitude')
           expect(Array.isArray(result.individualIsochrones)).toBe(true)
 
-          // Should call all required services
+          // Should call isochrone service for fair meeting area
           expect(mockCachedOpenRouteClient.calculateIsochrone).toHaveBeenCalled()
-          expect(mockGeometryService.validatePolygonOverlap).toHaveBeenCalled()
-          expect(mockGeometryService.calculatePolygonUnion).toHaveBeenCalled()
-          expect(mockGeometryService.calculateCentroid).toHaveBeenCalled()
-        }
-      ), { numRuns: 20 })
-    })
-
-    it('should handle polygon overlap validation failure', async () => {
-      await fc.assert(fc.asyncProperty(
-        fc.array(locationArbitrary, { minLength: 2, maxLength: 3 }),
-        fc.integer({ min: 1, max: 60 }),
-        travelModeArbitrary,
-        fc.integer({ min: 5, max: 60 }),
-        async (locations, travelTimeMinutes, travelMode, bufferTimeMinutes) => {
-          // Mock no overlap scenario
-          mockGeometryService.validatePolygonOverlap.mockReturnValue(false)
-
-          await expect(calculateIsochronicCenter({
-            locations,
-            travelTimeMinutes,
-            travelMode: travelMode as any,
-            bufferTimeMinutes
-          })).rejects.toThrow(/too far apart.*no overlapping/i)
-
-          // Should have called validation but not proceeded to union/centroid
-          expect(mockGeometryService.validatePolygonOverlap).toHaveBeenCalled()
-          expect(mockGeometryService.calculatePolygonUnion).not.toHaveBeenCalled()
-          expect(mockGeometryService.calculateCentroid).not.toHaveBeenCalled()
         }
       ), { numRuns: 20 })
     })

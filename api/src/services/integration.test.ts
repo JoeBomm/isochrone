@@ -1,4 +1,4 @@
-import { calculateIsochronicCenter } from './isochrones'
+import { calculateMinimaxCenter } from './isochrones'
 import { geocodeAddress } from './locations'
 
 // Mock the geometry service to avoid polygon overlap issues in integration tests
@@ -15,16 +15,28 @@ jest.mock('src/lib/geometry', () => {
     longitude: -74.005
   }
 
+  const mockPairwiseMidpoints = [
+    { latitude: 40.7164, longitude: -74.008 }
+  ]
+
   return {
     geometryService: {
       calculatePolygonUnion: jest.fn().mockReturnValue(mockPolygon),
       calculateCentroid: jest.fn().mockReturnValue(mockCentroid),
-      validatePolygonOverlap: jest.fn().mockReturnValue(true)
+      validatePolygonOverlap: jest.fn().mockReturnValue(true),
+      calculateGeographicCentroid: jest.fn().mockReturnValue(mockCentroid),
+      calculateMedianCoordinate: jest.fn().mockReturnValue(mockCentroid),
+      calculatePairwiseMidpoints: jest.fn().mockReturnValue(mockPairwiseMidpoints),
+      validateCoordinateBounds: jest.fn().mockReturnValue(true)
     },
     TurfGeometryService: jest.fn().mockImplementation(() => ({
       calculatePolygonUnion: jest.fn().mockReturnValue(mockPolygon),
       calculateCentroid: jest.fn().mockReturnValue(mockCentroid),
-      validatePolygonOverlap: jest.fn().mockReturnValue(true)
+      validatePolygonOverlap: jest.fn().mockReturnValue(true),
+      calculateGeographicCentroid: jest.fn().mockReturnValue(mockCentroid),
+      calculateMedianCoordinate: jest.fn().mockReturnValue(mockCentroid),
+      calculatePairwiseMidpoints: jest.fn().mockReturnValue(mockPairwiseMidpoints),
+      validateCoordinateBounds: jest.fn().mockReturnValue(true)
     }))
   }
 })
@@ -42,6 +54,24 @@ jest.mock('src/lib/cachedOpenroute', () => ({
       latitude: 40.7128,
       longitude: -74.0060,
       address: 'New York, NY, USA'
+    }),
+    calculateTravelTimeMatrix: jest.fn().mockResolvedValue({
+      origins: [
+        { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+      ],
+      destinations: [
+        { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+        { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+        { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+      ],
+      travelTimes: [
+        [10, 10, 5, 15, 12], // Travel times from origin 0 to all destinations (in minutes)
+        [15, 15, 20, 5, 12]  // Travel times from origin 1 to all destinations (in minutes)
+      ],
+      travelMode: 'DRIVING_CAR'
     })
   }
 }))
@@ -64,6 +94,18 @@ describe('Integration Tests - Complete User Workflows', () => {
       longitude: -74.005
     })
     geometryService.validatePolygonOverlap.mockReturnValue(true)
+    geometryService.calculateGeographicCentroid.mockReturnValue({
+      latitude: 40.715,
+      longitude: -74.005
+    })
+    geometryService.calculateMedianCoordinate.mockReturnValue({
+      latitude: 40.715,
+      longitude: -74.005
+    })
+    geometryService.calculatePairwiseMidpoints.mockReturnValue([
+      { latitude: 40.7164, longitude: -74.008 }
+    ])
+    geometryService.validateCoordinateBounds.mockReturnValue(true)
 
     // Reset OpenRoute client mocks
     const { cachedOpenRouteClient } = require('src/lib/cachedOpenroute')
@@ -77,6 +119,24 @@ describe('Integration Tests - Complete User Workflows', () => {
       latitude: 40.7128,
       longitude: -74.0060,
       address: 'New York, NY, USA'
+    })
+    cachedOpenRouteClient.calculateTravelTimeMatrix.mockResolvedValue({
+      origins: [
+        { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+      ],
+      destinations: [
+        { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+        { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+        { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+      ],
+      travelTimes: [
+        [10, 10, 5, 15, 12], // Travel times from origin 0 to all destinations (in minutes)
+        [15, 15, 20, 5, 12]  // Travel times from origin 1 to all destinations (in minutes)
+      ],
+      travelMode: 'DRIVING_CAR'
     })
   })
 
@@ -111,9 +171,8 @@ describe('Integration Tests - Complete User Workflows', () => {
         }
       ]
 
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: locationInputs,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'DRIVING_CAR'
       })
@@ -147,9 +206,8 @@ describe('Integration Tests - Complete User Workflows', () => {
         }
       ]
 
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: locationInputs,
-        travelTimeMinutes: 20,
         bufferTimeMinutes: 5,
         travelMode: 'CYCLING_REGULAR'
       })
@@ -172,17 +230,15 @@ describe('Integration Tests - Complete User Workflows', () => {
       }
 
       // First request - should be cache miss
-      const result1 = await calculateIsochronicCenter({
+      const result1 = await calculateMinimaxCenter({
         locations: [baseLocation, { name: 'Other', latitude: 40.7200, longitude: -74.0100 }],
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'DRIVING_CAR'
       })
 
       // Second request with same parameters - should be cache hit
-      const result2 = await calculateIsochronicCenter({
+      const result2 = await calculateMinimaxCenter({
         locations: [baseLocation, { name: 'Other', latitude: 40.7200, longitude: -74.0100 }],
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'DRIVING_CAR'
       })
@@ -198,9 +254,8 @@ describe('Integration Tests - Complete User Workflows', () => {
         longitude: -74.0061
       }
 
-      const result3 = await calculateIsochronicCenter({
+      const result3 = await calculateMinimaxCenter({
         locations: [nearbyLocation, { name: 'Other', latitude: 40.7200, longitude: -74.0100 }],
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'DRIVING_CAR'
       })
@@ -233,11 +288,10 @@ describe('Integration Tests - Complete User Workflows', () => {
       )
 
       await expect(
-        calculateIsochronicCenter({
+        calculateMinimaxCenter({
           locations: [
             { name: 'Test', latitude: 40.7128, longitude: -74.0060 }
           ],
-          travelTimeMinutes: 30,
           bufferTimeMinutes: 10,
           travelMode: 'DRIVING_CAR'
         })
@@ -246,11 +300,10 @@ describe('Integration Tests - Complete User Workflows', () => {
 
     it('should handle invalid location data', async () => {
       await expect(
-        calculateIsochronicCenter({
+        calculateMinimaxCenter({
           locations: [
             { name: 'Invalid', latitude: 200, longitude: -74.0060 } // Invalid latitude
           ],
-          travelTimeMinutes: 30,
           bufferTimeMinutes: 10,
           travelMode: 'DRIVING_CAR'
         })
@@ -259,11 +312,10 @@ describe('Integration Tests - Complete User Workflows', () => {
 
     it('should handle insufficient locations', async () => {
       await expect(
-        calculateIsochronicCenter({
+        calculateMinimaxCenter({
           locations: [
             { name: 'Single', latitude: 40.7128, longitude: -74.0060 }
           ],
-          travelTimeMinutes: 30,
           bufferTimeMinutes: 10,
           travelMode: 'DRIVING_CAR'
         })
@@ -288,9 +340,8 @@ describe('Integration Tests - Complete User Workflows', () => {
         ]]]
       })
 
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: testLocations,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'DRIVING_CAR'
       })
@@ -308,9 +359,8 @@ describe('Integration Tests - Complete User Workflows', () => {
     })
 
     it('should handle cycling mode', async () => {
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: testLocations,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'CYCLING_REGULAR'
       })
@@ -320,9 +370,8 @@ describe('Integration Tests - Complete User Workflows', () => {
     })
 
     it('should handle walking mode', async () => {
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: testLocations,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 10,
         travelMode: 'FOOT_WALKING'
       })
@@ -339,9 +388,8 @@ describe('Integration Tests - Complete User Workflows', () => {
     ]
 
     it('should handle minimum buffer time (5 minutes)', async () => {
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: testLocations,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 5,
         travelMode: 'DRIVING_CAR'
       })
@@ -351,9 +399,8 @@ describe('Integration Tests - Complete User Workflows', () => {
     })
 
     it('should handle maximum buffer time (60 minutes)', async () => {
-      const result = await calculateIsochronicCenter({
+      const result = await calculateMinimaxCenter({
         locations: testLocations,
-        travelTimeMinutes: 30,
         bufferTimeMinutes: 60,
         travelMode: 'DRIVING_CAR'
       })

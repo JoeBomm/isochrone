@@ -3,12 +3,10 @@ import { useState } from 'react'
 export type TravelMode = 'DRIVING_CAR' | 'CYCLING_REGULAR' | 'FOOT_WALKING'
 
 interface IsochroneControlsProps {
-  travelTime: number
   travelMode: TravelMode
-  bufferTime: number
-  onTravelTimeChange: (minutes: number) => void
+  slackTime: number
   onTravelModeChange: (mode: TravelMode) => void
-  onBufferTimeChange: (minutes: number) => void
+  onSlackTimeChange: (minutes: number) => void
   onCalculate: () => Promise<void>
   isCalculating: boolean
   canCalculate: boolean
@@ -21,41 +19,26 @@ const TRAVEL_MODES = [
 ]
 
 const IsochroneControls = ({
-  travelTime,
   travelMode,
-  bufferTime,
-  onTravelTimeChange,
+  slackTime,
   onTravelModeChange,
-  onBufferTimeChange,
+  onSlackTimeChange,
   onCalculate,
   isCalculating,
   canCalculate
 }: IsochroneControlsProps) => {
-  const [travelTimeError, setTravelTimeError] = useState('')
-  const [bufferTimeError, setBufferTimeError] = useState('')
+  const [slackTimeError, setSlackTimeError] = useState('')
 
-  const handleTravelTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSlackTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value)
-    setTravelTimeError('')
-
-    if (isNaN(value) || value < 1 || value > 60) {
-      setTravelTimeError('Travel time must be between 1 and 60 minutes')
-      return
-    }
-
-    onTravelTimeChange(value)
-  }
-
-  const handleBufferTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value)
-    setBufferTimeError('')
+    setSlackTimeError('')
 
     if (isNaN(value) || value < 5 || value > 60) {
-      setBufferTimeError('Buffer time must be between 5 and 60 minutes')
+      setSlackTimeError('Slack time must be between 5 and 60 minutes')
       return
     }
 
-    onBufferTimeChange(value)
+    onSlackTimeChange(value)
   }
 
   const handleCalculate = async () => {
@@ -95,52 +78,27 @@ const IsochroneControls = ({
         </div>
       </div>
 
-      {/* Travel Time Input */}
+      {/* Slack Time Input */}
       <div>
-        <label htmlFor="travel-time" className="block text-sm font-medium text-gray-700 mb-1">
-          Travel Time (minutes)
+        <label htmlFor="slack-time" className="block text-sm font-medium text-gray-700 mb-1">
+          Slack Time (minutes)
         </label>
         <input
-          id="travel-time"
-          type="number"
-          min="1"
-          max="60"
-          value={travelTime}
-          onChange={handleTravelTimeChange}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          disabled={isCalculating}
-        />
-        <p className="text-xs text-gray-500 mt-1">
-          Maximum travel time from each location (1-60 minutes)
-        </p>
-        {travelTimeError && (
-          <div className="text-sm text-red-600 bg-red-50 p-2 rounded mt-1">
-            {travelTimeError}
-          </div>
-        )}
-      </div>
-
-      {/* Buffer Time Input */}
-      <div>
-        <label htmlFor="buffer-time" className="block text-sm font-medium text-gray-700 mb-1">
-          Buffer Time (minutes)
-        </label>
-        <input
-          id="buffer-time"
+          id="slack-time"
           type="number"
           min="5"
           max="60"
-          value={bufferTime}
-          onChange={handleBufferTimeChange}
+          value={slackTime}
+          onChange={handleSlackTimeChange}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           disabled={isCalculating}
         />
         <p className="text-xs text-gray-500 mt-1">
-          Additional time for the fair meeting area (5-60 minutes)
+          Visualization radius around the optimal meeting point (5-60 minutes)
         </p>
-        {bufferTimeError && (
+        {slackTimeError && (
           <div className="text-sm text-red-600 bg-red-50 p-2 rounded mt-1">
-            {bufferTimeError}
+            {slackTimeError}
           </div>
         )}
       </div>
@@ -149,7 +107,7 @@ const IsochroneControls = ({
       <div>
         <button
           onClick={handleCalculate}
-          disabled={!canCalculate || isCalculating || !!travelTimeError || !!bufferTimeError}
+          disabled={!canCalculate || isCalculating || !!slackTimeError}
           className="w-full bg-green-600 text-white py-3 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
         >
           {isCalculating ? (
@@ -158,10 +116,10 @@ const IsochroneControls = ({
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              Calculating...
+              Finding optimal point...
             </div>
           ) : (
-            'Calculate Fair Meeting Point'
+            'Find Optimal Meeting Point'
           )}
         </button>
 
@@ -177,8 +135,7 @@ const IsochroneControls = ({
         <h4 className="text-sm font-medium text-gray-700 mb-2">Current Settings</h4>
         <div className="text-xs text-gray-600 space-y-1">
           <div>Travel Mode: {TRAVEL_MODES.find(m => m.value === travelMode)?.label}</div>
-          <div>Travel Time: {travelTime} minutes</div>
-          <div>Buffer Time: {bufferTime} minutes</div>
+          <div>Slack Time: {slackTime} minutes</div>
         </div>
       </div>
     </div>

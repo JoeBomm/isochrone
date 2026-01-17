@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@redwoodjs/testing/web'
 import { MockedProvider } from '@apollo/client/testing'
 import HomePage from 'src/pages/HomePage/HomePage'
-import { GEOCODE_ADDRESS, CALCULATE_ISOCHRONIC_CENTER } from 'src/lib/graphql'
+import { GEOCODE_ADDRESS, CALCULATE_MINIMAX_CENTER } from 'src/lib/graphql'
 
 // Mock GraphQL responses
 const mockGeocodeResponse = {
@@ -21,20 +21,19 @@ const mockGeocodeResponse = {
 
 const mockCalculateResponse = {
   request: {
-    query: CALCULATE_ISOCHRONIC_CENTER,
+    query: CALCULATE_MINIMAX_CENTER,
     variables: {
       locations: [
         { name: 'New York, NY', latitude: 40.7128, longitude: -74.0060 },
         { name: 'Brooklyn, NY', latitude: 40.6892, longitude: -74.0445 }
       ],
-      travelTimeMinutes: 15,
       bufferTimeMinutes: 10,
       travelMode: 'DRIVING_CAR'
     }
   },
   result: {
     data: {
-      calculateIsochronicCenter: {
+      calculateMinimaxCenter: {
         centerPoint: {
           latitude: 40.7010,
           longitude: -74.0252
@@ -51,20 +50,19 @@ const mockCalculateResponse = {
 
 const mockCalculateCoordinateResponse = {
   request: {
-    query: CALCULATE_ISOCHRONIC_CENTER,
+    query: CALCULATE_MINIMAX_CENTER,
     variables: {
       locations: [
         { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.0060 },
         { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 }
       ],
-      travelTimeMinutes: 15,
       bufferTimeMinutes: 10,
       travelMode: 'DRIVING_CAR'
     }
   },
   result: {
     data: {
-      calculateIsochronicCenter: {
+      calculateMinimaxCenter: {
         centerPoint: {
           latitude: 40.7010,
           longitude: -74.0252
@@ -129,7 +127,7 @@ describe('Integration Tests - Complete User Workflows', () => {
       })
 
       // Step 3: Calculate fair meeting point
-      const calculateButton = screen.getByRole('button', { name: /calculate fair meeting point/i })
+      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
@@ -139,7 +137,6 @@ describe('Integration Tests - Complete User Workflows', () => {
 
       // Verify results are displayed
       expect(screen.getAllByText(/Center Point/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/Fair Meeting Area/i)).toBeInTheDocument()
     })
   })
 
@@ -175,7 +172,7 @@ describe('Integration Tests - Complete User Workflows', () => {
       })
 
       // Calculate fair meeting point
-      const calculateButton = screen.getByRole('button', { name: /calculate fair meeting point/i })
+      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
@@ -214,12 +211,11 @@ describe('Integration Tests - Complete User Workflows', () => {
     it('should display error messages for failed calculations', async () => {
       const calculationErrorMock = {
         request: {
-          query: CALCULATE_ISOCHRONIC_CENTER,
+          query: CALCULATE_MINIMAX_CENTER,
           variables: {
             locations: [
               { name: 'Test Location', latitude: 40.7128, longitude: -74.0060 }
             ],
-            travelTimeMinutes: 15,
             bufferTimeMinutes: 10,
             travelMode: 'DRIVING_CAR'
           }
@@ -245,11 +241,11 @@ describe('Integration Tests - Complete User Workflows', () => {
         expect(locationElements.length).toBeGreaterThan(0)
       })
 
-      const calculateButton = screen.getByRole('button', { name: /calculate fair meeting point/i })
+      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Insufficient Locations/i)).toBeInTheDocument()
+        expect(screen.getByText(/Please add at least 2 locations/i)).toBeInTheDocument()
       })
     })
   })
@@ -308,24 +304,23 @@ describe('Integration Tests - Complete User Workflows', () => {
     })
   })
 
-  describe('Travel Mode and Buffer Time Controls', () => {
-    it('should allow changing travel mode and buffer time', async () => {
+  describe('Travel Mode and Slack Time Controls', () => {
+    it('should allow changing travel mode and slack time', async () => {
       const customMock = {
         request: {
-          query: CALCULATE_ISOCHRONIC_CENTER,
+          query: CALCULATE_MINIMAX_CENTER,
           variables: {
             locations: [
               { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.0060 },
               { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 }
             ],
-            travelTimeMinutes: 45,
             bufferTimeMinutes: 15,
             travelMode: 'CYCLING_REGULAR'
           }
         },
         result: {
           data: {
-            calculateIsochronicCenter: {
+            calculateMinimaxCenter: {
               centerPoint: {
                 latitude: 40.7010,
                 longitude: -74.0252
@@ -360,16 +355,12 @@ describe('Integration Tests - Complete User Workflows', () => {
       const cyclingButton = screen.getByRole('button', { name: /cycling/i })
       fireEvent.click(cyclingButton)
 
-      // Change travel time
-      const travelTimeInput = screen.getByLabelText(/travel time/i)
-      fireEvent.change(travelTimeInput, { target: { value: '45' } })
-
-      // Change buffer time
-      const bufferTimeInput = screen.getByLabelText(/buffer time/i)
-      fireEvent.change(bufferTimeInput, { target: { value: '15' } })
+      // Change slack time
+      const slackTimeInput = screen.getByLabelText(/slack time/i)
+      fireEvent.change(slackTimeInput, { target: { value: '15' } })
 
       // Calculate with new settings
-      const calculateButton = screen.getByText('Calculate Fair Meeting Point')
+      const calculateButton = screen.getByText('Find Optimal Meeting Point')
       fireEvent.click(calculateButton)
 
       await waitFor(() => {

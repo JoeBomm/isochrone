@@ -162,11 +162,11 @@ const Map = ({
       // Enhanced popup for center point
       centerMarker.bindPopup(`
         <div class="p-3 min-w-[220px]">
-          <h3 class="font-semibold text-gray-900 mb-2">Fair Meeting Point</h3>
+          <h3 class="font-semibold text-gray-900 mb-2">Optimal Meeting Point</h3>
           <div class="space-y-1 text-sm text-gray-600">
             <p><strong>Coordinates:</strong> ${centerPoint.latitude.toFixed(4)}, ${centerPoint.longitude.toFixed(4)}</p>
             <p class="text-xs text-gray-500 mt-2">
-              This point represents the optimal center calculated from the geometric union of all location isochrones, ensuring fair travel times for all participants.
+              This point minimizes the maximum travel time for all participants using a minimax optimization algorithm that evaluates multiple hypothesis points.
             </p>
           </div>
         </div>
@@ -210,11 +210,11 @@ const Map = ({
 
       polygon.bindPopup(`
         <div class="p-3 min-w-[240px]">
-          <h3 class="font-semibold text-gray-900 mb-2">Fair Meeting Area</h3>
+          <h3 class="font-semibold text-gray-900 mb-2">Visualization Area</h3>
           <div class="space-y-1 text-sm text-gray-600">
-            <p>This area represents locations accessible within the configured buffer time from the calculated center point.</p>
+            <p>This area shows locations accessible within the configured slack time from the optimal meeting point.</p>
             <p class="text-xs text-gray-500 mt-2">
-              <strong>How it works:</strong> Individual isochrones are calculated for each location, their geometric union is computed, and the centroid of that accessible area becomes the fair meeting point.
+              <strong>How it works:</strong> The minimax algorithm finds the point that minimizes maximum travel time, then generates this visualization area using the slack time radius.
             </p>
           </div>
         </div>

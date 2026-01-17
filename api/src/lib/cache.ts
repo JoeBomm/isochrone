@@ -1,5 +1,6 @@
 import { createClient } from 'redis'
 import { GeoJSON } from 'geojson'
+import type { TravelMode, TravelTimeMatrix } from 'types/graphql'
 
 export interface Coordinate {
   latitude: number
@@ -19,9 +20,18 @@ export interface IsochroneCacheKey {
   precision: number // meters for location matching
 }
 
+export interface MatrixCacheKey {
+  origins: Coordinate[]
+  destinations: Coordinate[]
+  travelMode: TravelMode
+  precision: number // meters for location matching
+}
+
 export interface CacheStats {
   isochroneHits: number
   isochroneMisses: number
+  matrixHits: number
+  matrixMisses: number
   geocodingHits: number
   geocodingMisses: number
   totalEntries: number
@@ -37,10 +47,13 @@ export interface CacheService {
 export interface IsochroneCacheService extends CacheService {
   getIsochroneCache(key: IsochroneCacheKey): Promise<GeoJSON.Polygon | null>
   setIsochroneCache(key: IsochroneCacheKey, polygon: GeoJSON.Polygon, ttl?: number): Promise<void>
+  getMatrixCache(key: MatrixCacheKey): Promise<TravelTimeMatrix | null>
+  setMatrixCache(key: MatrixCacheKey, matrix: TravelTimeMatrix, ttl?: number): Promise<void>
   getGeocodingCache(address: string): Promise<Coordinate | null>
   setGeocodingCache(address: string, coordinate: Coordinate, ttl?: number): Promise<void>
   getCacheStats(): Promise<CacheStats>
   generateIsochroneCacheKey(coordinate: Coordinate, params: IsochroneParams, precision?: number): string
+  generateMatrixCacheKey(origins: Coordinate[], destinations: Coordinate[], travelMode: TravelMode, precision?: number): string
 }
 
 class InMemoryCache implements IsochroneCacheService {
@@ -48,6 +61,8 @@ class InMemoryCache implements IsochroneCacheService {
   private stats: CacheStats = {
     isochroneHits: 0,
     isochroneMisses: 0,
+    matrixHits: 0,
+    matrixMisses: 0,
     geocodingHits: 0,
     geocodingMisses: 0,
     totalEntries: 0
@@ -70,7 +85,7 @@ class InMemoryCache implements IsochroneCacheService {
     const expires = ttl ? Date.now() + ttl * 1000 : undefined
     const isNewKey = !this.cache.has(key)
     this.cache.set(key, { value, expires })
-    
+
     if (isNewKey) {
       this.stats.totalEntries++
     }
@@ -87,6 +102,8 @@ class InMemoryCache implements IsochroneCacheService {
     this.stats = {
       isochroneHits: 0,
       isochroneMisses: 0,
+      matrixHits: 0,
+      matrixMisses: 0,
       geocodingHits: 0,
       geocodingMisses: 0,
       totalEntries: 0
@@ -98,7 +115,7 @@ class InMemoryCache implements IsochroneCacheService {
     // 111000 meters per degree latitude (approximate)
     const latRounded = Math.round(coordinate.latitude * (111000 / precision)) / (111000 / precision)
     const lngRounded = Math.round(coordinate.longitude * (111000 / precision)) / (111000 / precision)
-    
+
     return `isochrone:${latRounded}:${lngRounded}:${params.travelTimeMinutes}:${params.travelMode}`
   }
 
@@ -108,7 +125,7 @@ class InMemoryCache implements IsochroneCacheService {
       { travelTimeMinutes: key.travelTimeMinutes, travelMode: key.travelMode },
       key.precision
     )
-    
+
     const result = await this.get(cacheKey)
     if (result) {
       this.stats.isochroneHits++
@@ -125,14 +142,14 @@ class InMemoryCache implements IsochroneCacheService {
       { travelTimeMinutes: key.travelTimeMinutes, travelMode: key.travelMode },
       key.precision
     )
-    
+
     await this.set(cacheKey, JSON.stringify(polygon), ttl)
   }
 
   async getGeocodingCache(address: string): Promise<Coordinate | null> {
     const cacheKey = `geocoding:${address.toLowerCase().trim()}`
     const result = await this.get(cacheKey)
-    
+
     if (result) {
       this.stats.geocodingHits++
       return JSON.parse(result) as Coordinate
@@ -150,6 +167,36 @@ class InMemoryCache implements IsochroneCacheService {
   async getCacheStats(): Promise<CacheStats> {
     return { ...this.stats }
   }
+
+  generateMatrixCacheKey(origins: Coordinate[], destinations: Coordinate[], travelMode: TravelMode, precision: number = 100): string {
+    const roundCoordinate = (coord: Coordinate) => ({
+      lat: Math.round(coord.latitude * (111000 / precision)) / (111000 / precision),
+      lng: Math.round(coord.longitude * (111000 / precision)) / (111000 / precision)
+    })
+
+    const originsKey = origins.map(roundCoordinate).sort((a, b) => a.lat - b.lat || a.lng - b.lng).map(c => `${c.lat}:${c.lng}`).join(',')
+    const destinationsKey = destinations.map(roundCoordinate).sort((a, b) => a.lat - b.lat || a.lng - b.lng).map(c => `${c.lat}:${c.lng}`).join(',')
+
+    return `matrix:${originsKey}:${destinationsKey}:${travelMode}`
+  }
+
+  async getMatrixCache(key: MatrixCacheKey): Promise<TravelTimeMatrix | null> {
+    const cacheKey = this.generateMatrixCacheKey(key.origins, key.destinations, key.travelMode, key.precision)
+    const result = await this.get(cacheKey)
+
+    if (result) {
+      this.stats.matrixHits++
+      return JSON.parse(result) as TravelTimeMatrix
+    } else {
+      this.stats.matrixMisses++
+      return null
+    }
+  }
+
+  async setMatrixCache(key: MatrixCacheKey, matrix: TravelTimeMatrix, ttl: number = 24 * 60 * 60): Promise<void> {
+    const cacheKey = this.generateMatrixCacheKey(key.origins, key.destinations, key.travelMode, key.precision)
+    await this.set(cacheKey, JSON.stringify(matrix), ttl)
+  }
 }
 
 class RedisCache implements IsochroneCacheService {
@@ -157,6 +204,8 @@ class RedisCache implements IsochroneCacheService {
   private stats: CacheStats = {
     isochroneHits: 0,
     isochroneMisses: 0,
+    matrixHits: 0,
+    matrixMisses: 0,
     geocodingHits: 0,
     geocodingMisses: 0,
     totalEntries: 0
@@ -198,6 +247,8 @@ class RedisCache implements IsochroneCacheService {
     this.stats = {
       isochroneHits: 0,
       isochroneMisses: 0,
+      matrixHits: 0,
+      matrixMisses: 0,
       geocodingHits: 0,
       geocodingMisses: 0,
       totalEntries: 0
@@ -209,7 +260,7 @@ class RedisCache implements IsochroneCacheService {
     // 111000 meters per degree latitude (approximate)
     const latRounded = Math.round(coordinate.latitude * (111000 / precision)) / (111000 / precision)
     const lngRounded = Math.round(coordinate.longitude * (111000 / precision)) / (111000 / precision)
-    
+
     return `isochrone:${latRounded}:${lngRounded}:${params.travelTimeMinutes}:${params.travelMode}`
   }
 
@@ -219,7 +270,7 @@ class RedisCache implements IsochroneCacheService {
       { travelTimeMinutes: key.travelTimeMinutes, travelMode: key.travelMode },
       key.precision
     )
-    
+
     const result = await this.get(cacheKey)
     if (result) {
       this.stats.isochroneHits++
@@ -236,14 +287,14 @@ class RedisCache implements IsochroneCacheService {
       { travelTimeMinutes: key.travelTimeMinutes, travelMode: key.travelMode },
       key.precision
     )
-    
+
     await this.set(cacheKey, JSON.stringify(polygon), ttl)
   }
 
   async getGeocodingCache(address: string): Promise<Coordinate | null> {
     const cacheKey = `geocoding:${address.toLowerCase().trim()}`
     const result = await this.get(cacheKey)
-    
+
     if (result) {
       this.stats.geocodingHits++
       return JSON.parse(result) as Coordinate
@@ -256,6 +307,36 @@ class RedisCache implements IsochroneCacheService {
   async setGeocodingCache(address: string, coordinate: Coordinate, ttl: number = 7 * 24 * 60 * 60): Promise<void> {
     const cacheKey = `geocoding:${address.toLowerCase().trim()}`
     await this.set(cacheKey, JSON.stringify(coordinate), ttl)
+  }
+
+  generateMatrixCacheKey(origins: Coordinate[], destinations: Coordinate[], travelMode: TravelMode, precision: number = 100): string {
+    const roundCoordinate = (coord: Coordinate) => ({
+      lat: Math.round(coord.latitude * (111000 / precision)) / (111000 / precision),
+      lng: Math.round(coord.longitude * (111000 / precision)) / (111000 / precision)
+    })
+
+    const originsKey = origins.map(roundCoordinate).sort((a, b) => a.lat - b.lat || a.lng - b.lng).map(c => `${c.lat}:${c.lng}`).join(',')
+    const destinationsKey = destinations.map(roundCoordinate).sort((a, b) => a.lat - b.lat || a.lng - b.lng).map(c => `${c.lat}:${c.lng}`).join(',')
+
+    return `matrix:${originsKey}:${destinationsKey}:${travelMode}`
+  }
+
+  async getMatrixCache(key: MatrixCacheKey): Promise<TravelTimeMatrix | null> {
+    const cacheKey = this.generateMatrixCacheKey(key.origins, key.destinations, key.travelMode, key.precision)
+    const result = await this.get(cacheKey)
+
+    if (result) {
+      this.stats.matrixHits++
+      return JSON.parse(result) as TravelTimeMatrix
+    } else {
+      this.stats.matrixMisses++
+      return null
+    }
+  }
+
+  async setMatrixCache(key: MatrixCacheKey, matrix: TravelTimeMatrix, ttl: number = 24 * 60 * 60): Promise<void> {
+    const cacheKey = this.generateMatrixCacheKey(key.origins, key.destinations, key.travelMode, key.precision)
+    await this.set(cacheKey, JSON.stringify(matrix), ttl)
   }
 
   async getCacheStats(): Promise<CacheStats> {

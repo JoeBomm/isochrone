@@ -1,4 +1,9 @@
 import fc from 'fast-check'
+import { openRouteClient } from './openroute'
+import type { TravelMode } from 'types/graphql'
+
+// Mock fetch for testing
+global.fetch = jest.fn()
 
 // We need to test the API key validation logic without creating actual client instances
 // since the constructor throws on invalid keys
@@ -7,8 +12,8 @@ describe('OpenRouteService API Key Validation', () => {
     /**
      * Feature: isochrone-center-point, Property 1: API Key Validation
      * Validates: Requirements 2.5
-     * 
-     * For any API key string, the validation function should correctly identify 
+     *
+     * For any API key string, the validation function should correctly identify
      * valid OpenRouteService API key formats and reject invalid formats with descriptive error messages.
      */
     it('should validate API key formats correctly', () => {
@@ -20,7 +25,7 @@ describe('OpenRouteService API Key Validation', () => {
         if (typeof key !== 'string' || key.length < 20) {
           return false
         }
-        
+
         // Check if it's a valid base64-like string (letters, numbers, +, /, =)
         const base64Regex = /^[A-Za-z0-9+/=]+$/
         return base64Regex.test(key)
@@ -31,7 +36,7 @@ describe('OpenRouteService API Key Validation', () => {
           fc.string(),
           (apiKey) => {
             const isValid = isValidApiKeyFormat(apiKey)
-            
+
             if (isValid) {
               // Valid keys should be strings longer than 20 chars with base64 characters
               expect(typeof apiKey).toBe('string')
@@ -42,7 +47,7 @@ describe('OpenRouteService API Key Validation', () => {
               const failsLengthCheck = apiKey.length < 20
               const failsTypeCheck = typeof apiKey !== 'string'
               const failsBase64Check = !/^[A-Za-z0-9+/=]+$/.test(apiKey)
-              
+
               expect(failsLengthCheck || failsTypeCheck || failsBase64Check).toBe(true)
             }
           }
@@ -56,7 +61,7 @@ describe('OpenRouteService API Key Validation', () => {
         if (typeof key !== 'string' || key.length < 20) {
           return false
         }
-        
+
         const base64Regex = /^[A-Za-z0-9+/=]+$/
         return base64Regex.test(key)
       }
@@ -71,7 +76,7 @@ describe('OpenRouteService API Key Validation', () => {
     it('should handle environment variable validation', () => {
       // Test the actual environment variable validation behavior
       const originalEnv = process.env.OPENROUTE_SERVICE_API_KEY
-      
+
       try {
         // Test missing API key
         delete process.env.OPENROUTE_SERVICE_API_KEY
@@ -90,16 +95,16 @@ describe('OpenRouteService API Key Validation', () => {
           if (!apiKey) {
             throw new Error('OPENROUTE_SERVICE_API_KEY environment variable is required')
           }
-          
+
           const isValidApiKeyFormat = (key: string): boolean => {
             if (typeof key !== 'string' || key.length < 20) {
               return false
             }
-            
+
             const base64Regex = /^[A-Za-z0-9+/=]+$/
             return base64Regex.test(key)
           }
-          
+
           if (!isValidApiKeyFormat(apiKey)) {
             throw new Error('Invalid OpenRouteService API key format')
           }
@@ -112,16 +117,16 @@ describe('OpenRouteService API Key Validation', () => {
           if (!apiKey) {
             throw new Error('OPENROUTE_SERVICE_API_KEY environment variable is required')
           }
-          
+
           const isValidApiKeyFormat = (key: string): boolean => {
             if (typeof key !== 'string' || key.length < 20) {
               return false
             }
-            
+
             const base64Regex = /^[A-Za-z0-9+/=]+$/
             return base64Regex.test(key)
           }
-          
+
           if (!isValidApiKeyFormat(apiKey)) {
             throw new Error('Invalid OpenRouteService API key format')
           }
@@ -134,6 +139,169 @@ describe('OpenRouteService API Key Validation', () => {
           delete process.env.OPENROUTE_SERVICE_API_KEY
         }
       }
+    })
+  })
+})
+
+describe('OpenRouteService Matrix API Integration', () => {
+  const mockFetch = fetch as jest.MockedFunction<typeof fetch>
+
+  beforeEach(() => {
+    mockFetch.mockClear()
+    // Set a valid API key for testing
+    process.env.OPENROUTE_SERVICE_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA4ZTQ1Y2Q4N2Q4YjQ5YmRhMjIxZmJmMWQ4MjMyNGY0IiwiaCI6Im11cm11cjY0In0='
+  })
+
+  afterEach(() => {
+    delete process.env.OPENROUTE_SERVICE_API_KEY
+  })
+
+  describe('calculateTravelTimeMatrix', () => {
+    it('should successfully calculate travel time matrix', async () => {
+      const mockResponse = {
+        durations: [
+          [0, 1800, 3600], // Origin 0 to destinations 0, 1, 2 (in seconds)
+          [1800, 0, 2400]  // Origin 1 to destinations 0, 1, 2 (in seconds)
+        ]
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response)
+
+      const origins = [
+        { latitude: 40.7128, longitude: -74.0060 }, // NYC
+        { latitude: 34.0522, longitude: -118.2437 } // LA
+      ]
+
+      const destinations = [
+        { latitude: 41.8781, longitude: -87.6298 }, // Chicago
+        { latitude: 29.7604, longitude: -95.3698 }, // Houston
+        { latitude: 33.4484, longitude: -112.0740 } // Phoenix
+      ]
+
+      const result = await openRouteClient.calculateTravelTimeMatrix(
+        origins,
+        destinations,
+        'DRIVING_CAR' as TravelMode
+      )
+
+      expect(result).toEqual({
+        origins: [
+          { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: 'origin_1', name: 'Origin 2', latitude: 34.0522, longitude: -118.2437 }
+        ],
+        destinations: [
+          { id: 'destination_0', coordinate: { latitude: 41.8781, longitude: -87.6298 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_1', coordinate: { latitude: 29.7604, longitude: -95.3698 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_2', coordinate: { latitude: 33.4484, longitude: -112.0740 }, type: 'PARTICIPANT_LOCATION', metadata: null }
+        ],
+        travelTimes: [
+          [0, 30, 60], // Converted from seconds to minutes
+          [30, 0, 40]
+        ],
+        travelMode: 'DRIVING_CAR'
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.openrouteservice.org/v2/matrix/driving-car',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Authorization': expect.stringContaining('Bearer'),
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }),
+          body: expect.stringContaining('"metrics":["duration"]')
+        })
+      )
+    })
+
+    it('should handle unreachable routes with Infinity', async () => {
+      const mockResponse = {
+        durations: [
+          [0, null, 1800], // null indicates unreachable route
+          [null, 0, null]
+        ]
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response)
+
+      const origins = [
+        { latitude: 40.7128, longitude: -74.0060 },
+        { latitude: 34.0522, longitude: -118.2437 }
+      ]
+
+      const destinations = [
+        { latitude: 41.8781, longitude: -87.6298 },
+        { latitude: 29.7604, longitude: -95.3698 },
+        { latitude: 33.4484, longitude: -112.0740 }
+      ]
+
+      const result = await openRouteClient.calculateTravelTimeMatrix(
+        origins,
+        destinations,
+        'DRIVING_CAR' as TravelMode
+      )
+
+      expect(result.travelTimes).toEqual([
+        [0, Infinity, 30], // null converted to Infinity
+        [Infinity, 0, Infinity]
+      ])
+    })
+
+    it('should handle API errors appropriately', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => 'Unauthorized',
+      } as Response)
+
+      const origins = [{ latitude: 40.7128, longitude: -74.0060 }]
+      const destinations = [{ latitude: 41.8781, longitude: -87.6298 }]
+
+      await expect(
+        openRouteClient.calculateTravelTimeMatrix(origins, destinations, 'DRIVING_CAR' as TravelMode)
+      ).rejects.toThrow('Invalid API key: Authentication failed with OpenRouteService')
+    })
+
+    it('should handle network errors', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+      const origins = [{ latitude: 40.7128, longitude: -74.0060 }]
+      const destinations = [{ latitude: 41.8781, longitude: -87.6298 }]
+
+      await expect(
+        openRouteClient.calculateTravelTimeMatrix(origins, destinations, 'DRIVING_CAR' as TravelMode)
+      ).rejects.toThrow('Network error during matrix calculation')
+    })
+
+    it('should validate matrix response dimensions', async () => {
+      const mockResponse = {
+        durations: [
+          [0, 1800], // Wrong number of destinations
+        ]
+      }
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as Response)
+
+      const origins = [{ latitude: 40.7128, longitude: -74.0060 }]
+      const destinations = [
+        { latitude: 41.8781, longitude: -87.6298 },
+        { latitude: 29.7604, longitude: -95.3698 },
+        { latitude: 33.4484, longitude: -112.0740 }
+      ]
+
+      await expect(
+        openRouteClient.calculateTravelTimeMatrix(origins, destinations, 'DRIVING_CAR' as TravelMode)
+      ).rejects.toThrow('Invalid matrix dimensions')
     })
   })
 })

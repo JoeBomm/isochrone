@@ -9,7 +9,7 @@ import Map, { type Coordinate } from 'src/components/Map/Map'
 import ToastContainer from 'src/components/Toast/ToastContainer'
 import LoadingOverlay from 'src/components/LoadingSpinner/LoadingOverlay'
 import { useToast } from 'src/hooks/useToast'
-import { CALCULATE_ISOCHRONIC_CENTER } from 'src/lib/graphql'
+import { CALCULATE_MINIMAX_CENTER } from 'src/lib/graphql'
 
 const HomePage = () => {
   const [locations, setLocations] = useState<Location[]>([])
@@ -19,9 +19,8 @@ const HomePage = () => {
   const { toasts, removeToast, showSuccess, showError, showWarning } = useToast()
 
   // Isochrone calculation settings
-  const [travelTime, setTravelTime] = useState(15)
   const [travelMode, setTravelMode] = useState<TravelMode>('DRIVING_CAR')
-  const [bufferTime, setBufferTime] = useState(10)
+  const [slackTime, setSlackTime] = useState(10)
   const [isCalculating, setIsCalculating] = useState(false)
 
   // Results state
@@ -29,11 +28,11 @@ const HomePage = () => {
   const [fairMeetingArea, setFairMeetingArea] = useState<GeoJSON.Polygon | undefined>()
   const [calculationError, setCalculationError] = useState<string>('')
 
-  // GraphQL mutation for calculating isochronic center
-  const [calculateIsochronicCenter] = useMutation(CALCULATE_ISOCHRONIC_CENTER, {
+  // GraphQL mutation for calculating minimax center
+  const [calculateMinimaxCenter] = useMutation(CALCULATE_MINIMAX_CENTER, {
     onCompleted: (data) => {
-      if (data?.calculateIsochronicCenter) {
-        const result = data.calculateIsochronicCenter
+      if (data?.calculateMinimaxCenter) {
+        const result = data.calculateMinimaxCenter
         setCenterPoint(result.centerPoint)
         setFairMeetingArea(result.fairMeetingArea)
         setCalculationError('')
@@ -124,12 +123,11 @@ const HomePage = () => {
         longitude: location.longitude
       }))
 
-      await calculateIsochronicCenter({
+      await calculateMinimaxCenter({
         variables: {
           locations: locationInputs,
-          travelTimeMinutes: travelTime,
           travelMode: travelMode,
-          bufferTimeMinutes: bufferTime
+          bufferTimeMinutes: slackTime
         }
       })
     } catch (error) {
@@ -157,7 +155,7 @@ const HomePage = () => {
       {/* Loading Overlay */}
       <LoadingOverlay
         isVisible={isCalculating}
-        message="Calculating fair meeting point..."
+        message="Finding optimal meeting point..."
       />
 
       <MainLayout
@@ -185,15 +183,13 @@ const HomePage = () => {
           {/* Controls Section */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <h2 className="text-lg font-semibold text-gray-800 mb-3">
-              Travel Settings
+              Algorithm Settings
             </h2>
             <IsochroneControls
-              travelTime={travelTime}
               travelMode={travelMode}
-              bufferTime={bufferTime}
-              onTravelTimeChange={setTravelTime}
+              slackTime={slackTime}
               onTravelModeChange={setTravelMode}
-              onBufferTimeChange={setBufferTime}
+              onSlackTimeChange={setSlackTime}
               onCalculate={handleCalculate}
               isCalculating={isCalculating}
               canCalculate={canCalculate}
@@ -251,10 +247,10 @@ const HomePage = () => {
                             <strong>Travel Mode:</strong> {travelMode.replace('_', ' ').toLowerCase()}
                           </div>
                           <div>
-                            <strong>Buffer Time:</strong> {bufferTime} minutes
+                            <strong>Slack Time:</strong> {slackTime} minutes
                           </div>
                           <div className="mt-2 text-xs opacity-75">
-                            The highlighted area on the map shows locations accessible within {bufferTime} minutes from the optimal center point.
+                            The highlighted area on the map shows locations accessible within {slackTime} minutes from the optimal center point.
                           </div>
                         </div>
                       </div>
@@ -267,7 +263,7 @@ const HomePage = () => {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3" />
                   </svg>
                   <p className="font-medium">Ready to Calculate</p>
-                  <p className="text-sm mt-1">Add at least 2 locations and click "Calculate Fair Meeting Point" to get started.</p>
+                  <p className="text-sm mt-1">Add at least 2 locations and click "Find Optimal Meeting Point" to get started.</p>
                 </div>
               )}
             </div>

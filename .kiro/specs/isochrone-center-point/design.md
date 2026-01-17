@@ -2,9 +2,9 @@
 
 ## Overview
 
-This design transforms the existing vanilla HTML/JavaScript isochrone application into a modern RedwoodJS full-stack application with an intelligent "fair meeting point" feature. The system calculates isochronic centroids by finding the geometric center of overlapping travel-time areas, ensuring meeting points are actually accessible within reasonable time from all participants.
+This design transforms the existing vanilla HTML/JavaScript isochrone application into a modern RedwoodJS full-stack application with an intelligent "fair meeting point" feature. The system calculates optimal meeting points using a matrix-based minimax travel-time approach that minimizes the maximum travel time from all participant locations.
 
-The application uses RedwoodJS's serverless-first architecture with React frontend, GraphQL API, and TypeScript throughout. The core innovation is the isochronic centroid calculation: instead of simple geographic averaging, we calculate individual isochrones, find their union, and determine the centroid of that accessible area.
+The application uses RedwoodJS's serverless-first architecture with React frontend, GraphQL API, and TypeScript throughout. The core innovation is the minimax travel-time center calculation: instead of geometric averaging or isochrone unions, we generate strategic hypothesis points and use the OpenRouteService Matrix API to evaluate actual travel times, selecting the point that minimizes the maximum travel time for all participants.
 
 ## Architecture
 
@@ -49,8 +49,9 @@ The application uses RedwoodJS's serverless-first architecture with React fronte
 
 - **Frontend**: React 18, TypeScript, Leaflet.js for mapping
 - **Backend**: Node.js serverless functions, GraphQL with Apollo
-- **Geometry**: Turf.js for polygon operations (union, centroid calculation)
-- **External APIs**: OpenRouteService for isochrone calculation and geocoding
+- **Matrix Calculations**: OpenRouteService Matrix API for travel time evaluation
+- **Geometry**: Turf.js for geographic calculations (centroid, midpoints)
+- **External APIs**: OpenRouteService for matrix calculations, isochrone visualization, and geocoding
 - **Styling**: Tailwind CSS for responsive design
 
 ## Components and Interfaces
@@ -133,9 +134,8 @@ type Query {
 }
 
 type Mutation {
-  calculateIsochronicCenter(
+  calculateMinimaxCenter(
     locations: [LocationInput!]!
-    travelTimeMinutes: Int!
     travelMode: TravelMode!
     bufferTimeMinutes: Int!
   ): IsochroneResult!
@@ -159,15 +159,34 @@ enum TravelMode {
 #### Isochrone Service
 ```typescript
 interface IsochroneService {
-  calculateIsochronicCenter(params: IsochroneCenterParams): Promise<IsochroneResult>
-  calculateSingleIsochrone(location: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon>
+  calculateMinimaxCenter(params: MinimaxCenterParams): Promise<IsochroneResult>
+  generateHypothesisPoints(locations: Location[]): HypothesisPoint[]
+  evaluateTravelTimes(origins: Location[], destinations: HypothesisPoint[], travelMode: TravelMode): Promise<TravelTimeMatrix>
+  selectOptimalPoint(matrix: TravelTimeMatrix, hypothesisPoints: HypothesisPoint[]): HypothesisPoint
+  calculateVisualizationIsochrone(centerPoint: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon>
 }
 
-interface IsochroneCenterParams {
+interface MinimaxCenterParams {
   locations: Location[]
-  travelTimeMinutes: number
   travelMode: TravelMode
-  bufferTimeMinutes: number
+  bufferTimeMinutes: number // Used only for visualization
+}
+
+interface HypothesisPoint {
+  id: string
+  coordinate: Coordinate
+  type: 'geographic_centroid' | 'median_coordinate' | 'participant_location' | 'pairwise_midpoint'
+  metadata?: {
+    participantId?: string
+    pairIds?: [string, string]
+  }
+}
+
+interface TravelTimeMatrix {
+  origins: Location[]
+  destinations: HypothesisPoint[]
+  travelTimes: number[][] // travelTimes[i][j] = time from origin i to destination j
+  travelMode: TravelMode
 }
 
 interface IsochroneParams {
@@ -179,21 +198,52 @@ interface IsochroneParams {
 #### Geometry Service
 ```typescript
 interface GeometryService {
-  calculatePolygonUnion(polygons: GeoJSON.Polygon[]): GeoJSON.Polygon | GeoJSON.MultiPolygon
-  calculateCentroid(polygon: GeoJSON.Polygon | GeoJSON.MultiPolygon): Coordinate
-  validatePolygonOverlap(polygons: GeoJSON.Polygon[]): boolean
+  calculateGeographicCentroid(locations: Location[]): Coordinate
+  calculateMedianCoordinate(locations: Location[]): Coordinate
+  calculatePairwiseMidpoints(locations: Location[]): Coordinate[]
+  validateCoordinateBounds(coordinate: Coordinate): boolean
+}
+```
+
+#### Matrix Service
+```typescript
+interface MatrixService {
+  calculateTravelTimeMatrix(
+    origins: Coordinate[],
+    destinations: Coordinate[],
+    travelMode: TravelMode
+  ): Promise<TravelTimeMatrix>
+  findMinimaxOptimal(matrix: TravelTimeMatrix): {
+    optimalIndex: number
+    maxTravelTime: number
+    averageTravelTime: number
+  }
+  applyTieBreakingRules(
+    candidates: Array<{index: number, maxTime: number, avgTime: number}>,
+    hypothesisPoints: HypothesisPoint[],
+    geographicCentroid: Coordinate
+  ): number
 }
 ```
 
 #### Cache Service
 ```typescript
 interface CacheService {
+  getMatrixCache(key: MatrixCacheKey): Promise<TravelTimeMatrix | null>
+  setMatrixCache(key: MatrixCacheKey, matrix: TravelTimeMatrix, ttl?: number): Promise<void>
   getIsochroneCache(key: IsochroneCacheKey): Promise<GeoJSON.Polygon | null>
   setIsochroneCache(key: IsochroneCacheKey, polygon: GeoJSON.Polygon, ttl?: number): Promise<void>
   getGeocodingCache(address: string): Promise<Coordinate | null>
   setGeocodingCache(address: string, coordinate: Coordinate, ttl?: number): Promise<void>
   clearCache(): Promise<void>
   getCacheStats(): Promise<CacheStats>
+}
+
+interface MatrixCacheKey {
+  origins: Coordinate[]
+  destinations: Coordinate[]
+  travelMode: TravelMode
+  precision: number // meters for location matching
 }
 
 interface IsochroneCacheKey {
@@ -205,6 +255,8 @@ interface IsochroneCacheKey {
 }
 
 interface CacheStats {
+  matrixHits: number
+  matrixMisses: number
   isochroneHits: number
   isochroneMisses: number
   geocodingHits: number
@@ -214,6 +266,11 @@ interface CacheStats {
 ```
 ```typescript
 interface OpenRouteClient {
+  calculateTravelTimeMatrix(
+    origins: Coordinate[],
+    destinations: Coordinate[],
+    travelMode: TravelMode
+  ): Promise<TravelTimeMatrix>
   calculateIsochrone(coordinate: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon>
   geocodeAddress(address: string): Promise<Coordinate>
 }
@@ -223,23 +280,41 @@ interface OpenRouteClient {
 
 #### Location-Based Cache Keys
 ```typescript
-// Cache key generation for isochrones
+// Cache key generation for travel time matrices
+function generateMatrixCacheKey(
+  origins: Coordinate[],
+  destinations: Coordinate[],
+  travelMode: TravelMode,
+  precision: number = 100 // meters
+): string {
+  const roundCoordinate = (coord: Coordinate) => ({
+    lat: Math.round(coord.latitude * (111000 / precision)) / (111000 / precision),
+    lng: Math.round(coord.longitude * (111000 / precision)) / (111000 / precision)
+  })
+
+  const originsKey = origins.map(roundCoordinate).sort().map(c => `${c.lat}:${c.lng}`).join(',')
+  const destinationsKey = destinations.map(roundCoordinate).sort().map(c => `${c.lat}:${c.lng}`).join(',')
+
+  return `matrix:${originsKey}:${destinationsKey}:${travelMode}`
+}
+
+// Cache key generation for isochrones (unchanged)
 function generateIsochroneCacheKey(
-  coordinate: Coordinate, 
+  coordinate: Coordinate,
   params: IsochroneParams,
   precision: number = 100 // meters
 ): string {
   // Round coordinates to precision for cache matching
   const latRounded = Math.round(coordinate.latitude * (111000 / precision)) / (111000 / precision)
   const lngRounded = Math.round(coordinate.longitude * (111000 / precision)) / (111000 / precision)
-  
+
   return `isochrone:${latRounded}:${lngRounded}:${params.travelTimeMinutes}:${params.travelMode}`
 }
 ```
 
 #### Cache Implementation
 - **Storage**: Redis for production, in-memory for development
-- **TTL**: 24 hours for isochrone data, 7 days for geocoding data
+- **TTL**: 24 hours for matrix data, 24 hours for isochrone data, 7 days for geocoding data
 - **Precision**: 100-meter radius for location matching (configurable)
 - **Eviction**: LRU (Least Recently Used) policy when memory limits reached
 - **Cache warming**: Pre-populate cache with common locations during testing
@@ -257,18 +332,30 @@ interface Location {
 }
 ```
 
-### Isochrone Calculation State
+### Minimax Calculation State
 ```typescript
-interface IsochroneCalculation {
+interface MinimaxCalculation {
   id: string
   locations: Location[]
-  travelTimeMinutes: number
   travelMode: TravelMode
   bufferTimeMinutes: number
+  hypothesisPoints?: HypothesisPoint[]
+  travelTimeMatrix?: TravelTimeMatrix
   result?: IsochroneResult
-  status: 'pending' | 'calculating' | 'completed' | 'error'
+  status: 'pending' | 'generating_hypotheses' | 'evaluating_matrix' | 'selecting_optimal' | 'generating_visualization' | 'completed' | 'error'
   error?: string
   createdAt: Date
+}
+
+### Minimax Result
+```typescript
+interface MinimaxResult {
+  optimalPoint: HypothesisPoint
+  maxTravelTime: number
+  averageTravelTime: number
+  allHypothesisPoints: HypothesisPoint[]
+  travelTimeMatrix: TravelTimeMatrix
+  fairMeetingArea: GeoJSON.Polygon
 }
 ```
 
@@ -303,64 +390,75 @@ Based on the prework analysis, the following properties validate the core functi
 *For any* sequence of location additions and removals, the application state should correctly maintain the location list and clear dependent calculations when locations are modified.
 **Validates: Requirements 3.3, 3.4**
 
-### Property 4: Isochrone Calculation Pipeline
-*For any* set of valid locations and travel parameters, the system should successfully calculate individual isochrones, compute their geometric union, and determine the centroid of the accessible area.
-**Validates: Requirements 4.1, 4.2, 4.3**
+### Property 4: Hypothesis Point Generation
+*For any* set of valid locations, the system should generate all required hypothesis point types: geographic centroid, median coordinates, participant locations, and pairwise midpoints.
+**Validates: Requirements 4.1**
 
-### Property 5: Isochronic Center Validation
-*For any* calculated isochronic center point, generating an isochrone from that center should produce a valid polygon that represents the fair meeting area.
+### Property 5: Travel Time Matrix Evaluation
+*For any* set of origins and destinations with valid travel mode, the matrix evaluation should return travel times with correct dimensions and all values should be positive numbers or indicate unreachable routes.
+**Validates: Requirements 4.2**
+
+### Property 6: Minimax Optimization
+*For any* valid travel time matrix, the selected optimal point should minimize the maximum travel time among all hypothesis points, excluding any points with invalid travel times.
+**Validates: Requirements 4.3, 4.5**
+
+### Property 7: Tie-Breaking Rules
+*For any* travel time matrix where multiple hypothesis points have equal maximum travel time, the tie-breaking rules should select the point with lowest average travel time, and if still tied, the point closest to geographic centroid.
+**Validates: Requirements 4.4**
+
+### Property 8: Visualization Isochrone Generation
+*For any* optimal meeting point and buffer time parameters, the system should generate a valid GeoJSON polygon representing the fair meeting area.
 **Validates: Requirements 5.1**
 
-### Property 6: UI Display Consistency
+### Property 9: UI Display Consistency
 *For any* application state with locations and calculated results, the map display should correctly show location markers, center point, and fair meeting area with proper visual differentiation.
 **Validates: Requirements 4.4, 5.2, 6.2, 6.3**
 
-### Property 7: Input Validation Boundaries
+### Property 10: Input Validation Boundaries
 *For any* buffer time input, the system should accept values between 5 and 60 minutes and reject values outside this range with appropriate error messages.
 **Validates: Requirements 5.3**
 
-### Property 8: Interactive Behavior
+### Property 11: Interactive Behavior
 *For any* map marker click event, the system should display appropriate popup information corresponding to the clicked element (location details or fair meeting area description).
 **Validates: Requirements 5.5, 6.4**
 
-### Property 9: API Response Caching
-*For any* location within 100 meters of a previously cached location with identical travel parameters, the system should return the cached result instead of making a new API call, and the cached result should be equivalent to a fresh API response.
+### Property 12: Matrix Response Caching
+*For any* travel time matrix calculation, the system should cache the result with location coordinates and travel mode as the cache key, and subsequent requests for locations within 100 meters with identical travel mode should return the cached result.
 **Validates: Requirements 8.1, 8.2**
 
-### Property 10: Error Handling Robustness
-*For any* error condition (missing API key, geocoding failure, API rate limits, insufficient locations), the system should return structured error responses with user-friendly messages and maintain stable application state.
-**Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5**
-
-<function_calls>
-<invoke name="prework">
-<parameter name="featureName">isochrone-center-point
+### Property 13: Minimax Fairness Property
+*For any* valid set of locations, the selected meeting point should minimize the maximum travel time from all participants among the evaluated hypothesis points, ensuring optimal fairness in travel time distribution.
+**Validates: Requirements 4.3, 4.5**
 
 ## Error Handling
 
 ### API Error Management
-- **OpenRouteService API failures**: Implement exponential backoff retry logic with circuit breaker pattern
-- **Rate limiting**: Cache successful responses and implement request queuing to respect API limits
+- **OpenRouteService Matrix API failures**: Implement exponential backoff retry logic with circuit breaker pattern for matrix calculations
+- **Rate limiting**: Cache successful matrix responses and implement request queuing to respect API limits
 - **Cache failures**: Graceful fallback to API calls when cache is unavailable, with appropriate logging
-- **Network timeouts**: Set reasonable timeout values (30s for isochrone calculations, 10s for geocoding)
-- **Invalid responses**: Validate API response schemas and handle malformed GeoJSON gracefully
+- **Network timeouts**: Set reasonable timeout values (45s for matrix calculations, 30s for isochrone calculations, 10s for geocoding)
+- **Invalid responses**: Validate Matrix API response schemas and handle malformed travel time data gracefully
 
 ### Input Validation
 - **Coordinate bounds**: Validate latitude (-90 to 90) and longitude (-180 to 180) ranges
 - **Address format**: Handle various address formats and international addresses
-- **Travel parameters**: Validate travel time (1-60 minutes) and buffer time (5-60 minutes) ranges
+- **Travel parameters**: Validate buffer time (5-60 minutes) ranges
 - **Location limits**: Enforce minimum 2 locations and maximum 12 locations for performance
+- **Hypothesis point validation**: Ensure all generated hypothesis points have valid coordinates
 
-### Geometry Error Handling
-- **Empty intersections**: Handle cases where isochrones don't overlap by suggesting larger travel times
-- **Invalid polygons**: Validate GeoJSON polygon structure and handle self-intersecting polygons
-- **Centroid calculation failures**: Fallback to geographic centroid if geometric centroid calculation fails
-- **Union operation failures**: Handle complex polygon union edge cases with Turf.js error recovery
+### Matrix Calculation Error Handling
+- **Unreachable destinations**: Handle cases where some hypothesis points are unreachable from participant locations
+- **Invalid travel times**: Filter out hypothesis points with null, negative, or infinite travel times
+- **Empty hypothesis set**: Handle cases where all hypothesis points are invalid by falling back to geographic centroid
+- **Matrix dimension mismatches**: Validate matrix response dimensions match expected origins and destinations
+- **Tie-breaking failures**: Implement fallback selection when tie-breaking rules cannot determine a unique winner
 
 ### User Experience Error Handling
-- **Loading states**: Show appropriate loading indicators during API calls and calculations
+- **Loading states**: Show appropriate loading indicators during matrix calculations and optimization
 - **Error messages**: Display user-friendly error messages with actionable suggestions
 - **Graceful degradation**: Allow partial functionality when some features fail
 - **State recovery**: Maintain application state consistency during error conditions
+- **Progress indicators**: Show calculation progress through hypothesis generation, matrix evaluation, and optimization phases
 
 ## Testing Strategy
 
@@ -385,19 +483,23 @@ The application will use both unit testing and property-based testing for compre
 
 ### Property Testing Focus Areas
 - **Input validation**: Test coordinate validation across all possible input ranges
-- **Calculation consistency**: Test isochrone calculation pipeline with random valid inputs
+- **Hypothesis generation**: Test hypothesis point generation with random location sets
+- **Matrix evaluation**: Test travel time matrix calculations with various location combinations
+- **Minimax optimization**: Test optimal point selection with random travel time matrices
 - **State management**: Test location addition/removal with various sequences
 - **Cache behavior**: Test cache hit/miss scenarios with location proximity and parameter variations
 - **Error handling**: Test error response consistency across different failure modes
 
 ### Integration Testing
-- **End-to-end workflows**: Test complete user journeys from location input to result display
-- **API mocking**: Use MSW (Mock Service Worker) for reliable API testing
+- **End-to-end workflows**: Test complete user journeys from location input to minimax result display
+- **API mocking**: Use MSW (Mock Service Worker) for reliable Matrix API testing
 - **Map interactions**: Test Leaflet map integration and marker management
 - **GraphQL operations**: Test GraphQL queries and mutations with various inputs
 
 ### Performance Testing
-- **Polygon operations**: Benchmark Turf.js union and centroid calculations with large polygons
+- **Matrix calculations**: Benchmark OpenRouteService Matrix API performance with various location counts
+- **Hypothesis generation**: Test performance of hypothesis point generation with maximum location limits
+- **Optimization algorithms**: Benchmark minimax optimization with large travel time matrices
 - **API response times**: Monitor OpenRouteService API performance and implement timeouts
 - **Memory usage**: Test application memory usage with maximum location limits
-- **Rendering performance**: Test map rendering performance with complex isochrone polygons
+- **Rendering performance**: Test map rendering performance with multiple hypothesis points and optimal center display

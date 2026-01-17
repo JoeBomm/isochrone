@@ -2,18 +2,20 @@
 
 ## Introduction
 
-Transform the existing isochrone mapping application from vanilla HTML/JavaScript to RedwoodJS SDK and add a new "fair meeting point" feature that calculates the geometric center of multiple locations and displays an isochrone from that center point. This enables users to find equitable meeting locations where all participants have similar travel times.
+Transform the existing isochrone mapping application from vanilla HTML/JavaScript to RedwoodJS SDK and add a new "fair meeting point" feature that calculates the optimal meeting location using a matrix-based minimax travel-time approach. This enables users to find equitable meeting locations that minimize the maximum travel time for all participants by evaluating strategic hypothesis points using actual travel time data.
 
 ## Glossary
 
 - **Isochrone**: A polygon representing areas reachable within a specified travel time from a given point
-- **Center_Point**: The isochronic centroid calculated from the geometric union of multiple isochrone areas
-- **Fair_Meeting_Area**: The isochrone area calculated from the isochronic center point with a buffer time
-- **Isochronic_Union**: The combined polygon area representing the union of all individual location isochrones
-- **Buffer_Time**: Additional travel time added to the center point calculation to ensure reasonable access for all participants
+- **Minimax_Travel_Time_Center**: The optimal meeting point that minimizes the maximum travel time from all participant locations
+- **Hypothesis_Point**: A candidate meeting point generated using strategic algorithms (geographic centroid, median coordinates, participant locations, pairwise midpoints)
+- **Travel_Time_Matrix**: A matrix containing travel times from all participant locations to all hypothesis points
+- **Fair_Meeting_Area**: The isochrone area calculated from the minimax center point with a buffer time for visualization
+- **Matrix_Evaluated_Hypothesis_Set**: The complete set of candidate meeting points evaluated using the OpenRouteService Matrix API
+- **Buffer_Time**: Additional travel time added to the center point visualization to show flexible meeting areas (does not influence meeting point selection)
 - **RedwoodJS_App**: The full-stack application built using RedwoodJS framework
-- **API_Service**: The backend service handling isochrone calculations, geocoding, and API key management with intelligent caching
-- **Cache_Service**: The caching layer that stores API responses with location-based and time-based keys
+- **API_Service**: The backend service handling matrix calculations, isochrone visualization, geocoding, and API key management with intelligent caching
+- **Cache_Service**: The caching layer that stores Matrix API responses and isochrone data with location-based and time-based keys
 
 ## Requirements
 
@@ -53,29 +55,29 @@ Transform the existing isochrone mapping application from vanilla HTML/JavaScrip
 4. WHEN a user removes a location, THE RedwoodJS_App SHALL update the map and clear any existing center calculations
 5. THE RedwoodJS_App SHALL support adding at least 12 locations for center calculation
 
-### Requirement 4: Isochronic Center Point Calculation
+### Requirement 4: Minimax Travel-Time Center Calculation
 
-**User Story:** As a user, I want the system to calculate the isochronic center of my locations, so that I can find a fair meeting point that is actually accessible within reasonable travel time from all participants.
+**User Story:** As a user, I want the system to calculate the minimax travel-time center of my locations, so that I can find a fair meeting point that minimizes the maximum travel time for all participants.
 
 #### Acceptance Criteria
 
-1. WHEN multiple locations are provided, THE API_Service SHALL calculate individual isochrones for each location using the specified travel time
-2. WHEN individual isochrones are calculated, THE API_Service SHALL compute the geometric union of all isochrone polygons
-3. WHEN the union area exists, THE API_Service SHALL calculate the geometric centroid of the combined accessible area
-4. WHEN the isochronic center point is calculated, THE RedwoodJS_App SHALL display it on the map with a distinct center marker
-5. THE API_Service SHALL validate that at least 2 locations are required and that their isochrones have overlapping or adjacent areas
+1. WHEN multiple locations are provided, THE API_Service SHALL generate hypothesis points using geographic centroid, median coordinates, participant locations, and pairwise midpoints
+2. WHEN hypothesis points are generated, THE API_Service SHALL evaluate travel times from all participant locations to all hypothesis points using the Matrix API
+3. WHEN travel time matrix is calculated, THE API_Service SHALL select the hypothesis point that minimizes the maximum travel time from all participants
+4. WHEN multiple hypothesis points have equal maximum travel time, THE API_Service SHALL apply tie-breaking rules (lowest average travel time, then closest to geographic centroid)
+5. WHEN hypothesis points have unreachable or invalid travel times, THE API_Service SHALL exclude them from consideration
 
 ### Requirement 5: Fair Meeting Area Visualization
 
-**User Story:** As a user, I want to see an isochrone from the calculated center point, so that I can identify areas where all participants have reasonable travel times.
+**User Story:** As a user, I want to see an isochrone from the calculated minimax center point, so that I can identify areas where all participants have reasonable travel times.
 
 #### Acceptance Criteria
 
-1. WHEN a center point exists, THE API_Service SHALL calculate an isochrone from that center using the specified buffer time
-2. WHEN displaying the fair meeting area, THE RedwoodJS_App SHALL show only the center isochrone, not individual location isochrones
-3. THE RedwoodJS_App SHALL allow users to adjust the buffer time between 5 and 60 minutes
+1. WHEN an optimal meeting point is selected, THE API_Service SHALL generate a visualization isochrone from that point using the specified buffer time
+2. WHEN displaying the fair meeting area, THE RedwoodJS_App SHALL show only the center isochrone, not individual location isochrones or hypothesis points
+3. THE RedwoodJS_App SHALL allow users to adjust the buffer time between 5 and 60 minutes for visualization purposes only
 4. THE RedwoodJS_App SHALL support different travel modes (driving, cycling, walking) for center isochrone calculation
-5. WHEN the isochrone is displayed, THE RedwoodJS_App SHALL show a popup indicating it represents the fair meeting area
+5. WHEN the isochrone is displayed, THE RedwoodJS_App SHALL show a popup indicating it represents the fair meeting area with the minimax travel time
 
 ### Requirement 6: Interactive Map Interface
 
@@ -103,14 +105,14 @@ Transform the existing isochrone mapping application from vanilla HTML/JavaScrip
 
 ### Requirement 8: API Response Caching
 
-**User Story:** As a user, I want the system to cache API responses, so that repeated requests for similar locations and travel times don't consume unnecessary API quota and provide faster responses.
+**User Story:** As a user, I want the system to cache API responses, so that repeated requests for similar locations and travel parameters don't consume unnecessary API quota and provide faster responses.
 
 #### Acceptance Criteria
 
-1. WHEN an isochrone is calculated for a location, THE API_Service SHALL cache the result with location coordinates and travel parameters as the cache key
-2. WHEN a subsequent request is made for a location within 100 meters of a cached location with identical travel parameters, THE API_Service SHALL return the cached result instead of making a new API call
-3. WHEN geocoding an address, THE API_Service SHALL cache the coordinate result for identical address strings
-4. THE API_Service SHALL implement cache expiration with a default TTL of 24 hours for isochrone data and 7 days for geocoding data
+1. WHEN a travel time matrix is calculated, THE API_Service SHALL cache the result with location coordinates and travel mode as the cache key
+2. WHEN a subsequent matrix request is made for locations within 100 meters of cached locations with identical travel mode, THE API_Service SHALL return the cached result instead of making a new API call
+3. WHEN an isochrone is calculated for visualization, THE API_Service SHALL cache the result with location coordinates and travel parameters as the cache key
+4. THE API_Service SHALL implement cache expiration with a default TTL of 24 hours for matrix data, 24 hours for isochrone data, and 7 days for geocoding data
 5. THE API_Service SHALL provide cache statistics and allow cache clearing for development and testing purposes
 
 ### Requirement 9: Error Handling and Validation

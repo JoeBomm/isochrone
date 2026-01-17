@@ -19,6 +19,7 @@ export enum ErrorCode {
   API_UNAVAILABLE = 'API_UNAVAILABLE',
   GEOCODING_FAILED = 'GEOCODING_FAILED',
   ISOCHRONE_CALCULATION_FAILED = 'ISOCHRONE_CALCULATION_FAILED',
+  MATRIX_CALCULATION_FAILED = 'MATRIX_CALCULATION_FAILED',
 
   // Geometry Calculation Errors
   NO_OVERLAPPING_AREAS = 'NO_OVERLAPPING_AREAS',
@@ -158,6 +159,16 @@ export const createTravelModeError = (mode: string): AppError => {
     message: `Unsupported travel mode: ${mode}`,
     userMessage: 'Invalid travel mode selected. Please choose from driving, cycling, or walking.',
     details: { mode, validModes: ['DRIVING_CAR', 'CYCLING_REGULAR', 'FOOT_WALKING'] }
+  })
+}
+
+export const createMatrixCalculationError = (details?: string, originalError?: Error): AppError => {
+  return new AppError({
+    code: ErrorCode.MATRIX_CALCULATION_FAILED,
+    message: `Travel time matrix calculation failed: ${details || 'Unknown error'}`,
+    userMessage: 'Failed to calculate travel times between locations. Please check your locations and try again.',
+    details: { matrixError: details },
+    originalError
   })
 }
 

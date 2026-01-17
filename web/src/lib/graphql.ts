@@ -10,17 +10,15 @@ export const GEOCODE_ADDRESS = gql`
   }
 `
 
-// Mutation for calculating isochronic center
-export const CALCULATE_ISOCHRONIC_CENTER = gql`
-  mutation CalculateIsochronicCenter(
+// Mutation for calculating minimax center
+export const CALCULATE_MINIMAX_CENTER = gql`
+  mutation CalculateMinimaxCenter(
     $locations: [LocationInput!]!
-    $travelTimeMinutes: Int!
     $travelMode: TravelMode!
     $bufferTimeMinutes: Int!
   ) {
-    calculateIsochronicCenter(
+    calculateMinimaxCenter(
       locations: $locations
-      travelTimeMinutes: $travelTimeMinutes
       travelMode: $travelMode
       bufferTimeMinutes: $bufferTimeMinutes
     ) {
