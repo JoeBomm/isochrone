@@ -3,6 +3,26 @@ import { MockedProvider } from '@apollo/client/testing'
 import HomePage from 'src/pages/HomePage/HomePage'
 import { GEOCODE_ADDRESS, CALCULATE_MINIMAX_CENTER } from 'src/lib/graphql'
 
+// Mock the Map component to avoid Leaflet issues in JSDOM
+jest.mock('src/components/Map/Map', () => {
+  return function MockMap({ locations, centerPoint, fairMeetingArea }) {
+    return (
+      <div data-testid="mock-map" className="map-container">
+        <div>Mock Map Component</div>
+        <div>Locations: {locations?.length || 0}</div>
+        {centerPoint && (
+          <div data-testid="center-point">
+            Center Point: {centerPoint.latitude}, {centerPoint.longitude}
+          </div>
+        )}
+        {fairMeetingArea && (
+          <div data-testid="fair-meeting-area">Fair Meeting Area Present</div>
+        )}
+      </div>
+    )
+  }
+})
+
 // Mock GraphQL responses
 const mockGeocodeResponse = {
   request: {
@@ -245,7 +265,7 @@ describe('Integration Tests - Complete User Workflows', () => {
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Please add at least 2 locations/i)).toBeInTheDocument()
+        expect(screen.getByText(/Add at least 2 locations to calculate/i)).toBeInTheDocument()
       })
     })
   })

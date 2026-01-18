@@ -9,6 +9,16 @@ jest.mock('src/lib/cachedOpenroute', () => ({
   }
 }))
 
+// Mock the matrix service
+jest.mock('src/lib/matrix', () => ({
+  matrixService: {
+    findMinimaxOptimal: jest.fn(),
+    evaluateBatchedMatrix: jest.fn(),
+    evaluatePhase2Matrix: jest.fn(),
+    findMultiPhaseMinimaxOptimal: jest.fn(),
+  }
+}))
+
 // Mock the geometry service
 jest.mock('src/lib/geometry', () => ({
   geometryService: {
@@ -24,9 +34,11 @@ jest.mock('src/lib/geometry', () => ({
 
 import { cachedOpenRouteClient } from 'src/lib/cachedOpenroute'
 import { geometryService } from 'src/lib/geometry'
+import { matrixService } from 'src/lib/matrix'
 
 const mockCachedOpenRouteClient = cachedOpenRouteClient as jest.Mocked<typeof cachedOpenRouteClient>
 const mockGeometryService = geometryService as jest.Mocked<typeof geometryService>
+const mockMatrixService = matrixService as jest.Mocked<typeof matrixService>
 
 /**
  * Property-based tests for minimax center validation
@@ -36,6 +48,7 @@ const mockGeometryService = geometryService as jest.Mocked<typeof geometryServic
 
 // Generator for valid location inputs with unique coordinates
 const locationArbitrary = fc.record({
+  id: fc.string({ minLength: 1, maxLength: 10 }),
   name: fc.string({ minLength: 1, maxLength: 20 }),
   latitude: fc.float({ min: -80, max: 80, noNaN: true }).filter(lat => Math.abs(lat) > 0.1), // Avoid poles and origin
   longitude: fc.float({ min: -170, max: 170, noNaN: true }).filter(lng => Math.abs(lng) > 0.1) // Avoid antimeridian and origin
@@ -84,26 +97,95 @@ describe('Isochrone Service Property Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks()
 
+    // Mock geometry service methods
+    mockGeometryService.calculateGeographicCentroid.mockReturnValue({ latitude: 40.7128, longitude: -74.0060 })
+    mockGeometryService.calculateMedianCoordinate.mockReturnValue({ latitude: 40.7128, longitude: -74.0060 })
+    mockGeometryService.calculatePairwiseMidpoints.mockReturnValue([{ latitude: 40.7128, longitude: -74.0060 }])
+    mockGeometryService.validateCoordinateBounds.mockReturnValue(true)
+
     // Set up default mock implementations
     mockCachedOpenRouteClient.calculateIsochrone.mockResolvedValue(mockPolygon)
 
     // Mock travel time matrix with valid data
     mockCachedOpenRouteClient.calculateTravelTimeMatrix.mockResolvedValue({
       origins: [
-        { latitude: 40.7128, longitude: -74.0060 },
-        { latitude: 40.7589, longitude: -73.9851 }
+        { id: '1', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+        { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
       ],
       destinations: [
-        { latitude: 40.7359, longitude: -73.9906 },
-        { latitude: 40.7505, longitude: -73.9934 },
-        { latitude: 40.7128, longitude: -74.0060 },
-        { latitude: 40.7589, longitude: -73.9851 },
-        { latitude: 40.7439, longitude: -73.9928 }
+        { id: '1', name: 'Dest 1', latitude: 40.7359, longitude: -73.9906 },
+        { id: '2', name: 'Dest 2', latitude: 40.7505, longitude: -73.9934 },
+        { id: '3', name: 'Dest 3', latitude: 40.7128, longitude: -74.0060 },
+        { id: '4', name: 'Dest 4', latitude: 40.7589, longitude: -73.9851 },
+        { id: '5', name: 'Dest 5', latitude: 40.7439, longitude: -73.9928 }
       ],
       travelTimes: [
         [15, 12, 0, 8, 10],  // From origin 0 to all destinations
         [18, 10, 8, 0, 5]    // From origin 1 to all destinations
-      ]
+      ],
+      travelMode: 'DRIVING_CAR'
+    })
+
+    // Mock matrix service methods
+    mockMatrixService.findMinimaxOptimal.mockReturnValue({
+      optimalIndex: 0,
+      maxTravelTime: 15,
+      averageTravelTime: 12.5
+    })
+
+    mockMatrixService.evaluateBatchedMatrix.mockResolvedValue({
+      combinedMatrix: {
+        origins: [
+          { id: '1', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
+        ],
+        destinations: [
+          { id: '1', name: 'Dest 1', latitude: 40.7128, longitude: -74.0060 }
+        ],
+        travelTimes: [[10], [15]],
+        travelMode: 'DRIVING_CAR'
+      },
+      phaseResults: [{
+        phase: 'PHASE_0',
+        matrix: {
+          origins: [
+            { id: '1', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+            { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
+          ],
+          destinations: [
+            { id: '1', name: 'Dest 1', latitude: 40.7128, longitude: -74.0060 }
+          ],
+          travelTimes: [[10], [15]],
+          travelMode: 'DRIVING_CAR'
+        },
+        hypothesisPoints: [{
+          id: 'test',
+          coordinate: { latitude: 40.7128, longitude: -74.0060 },
+          type: 'GEOGRAPHIC_CENTROID',
+          metadata: null
+        }],
+        startIndex: 0,
+        endIndex: 1
+      }],
+      totalHypothesisPoints: [{
+        id: 'test',
+        coordinate: { latitude: 40.7128, longitude: -74.0060 },
+        type: 'GEOGRAPHIC_CENTROID',
+        metadata: null
+      }]
+    })
+
+    mockMatrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
+      optimalIndex: 0,
+      maxTravelTime: 15,
+      averageTravelTime: 12.5,
+      optimalPhase: 'PHASE_0',
+      optimalHypothesisPoint: {
+        id: 'test',
+        coordinate: { latitude: 40.7128, longitude: -74.0060 },
+        type: 'GEOGRAPHIC_CENTROID',
+        metadata: null
+      }
     })
 
     mockGeometryService.validatePolygonOverlap.mockReturnValue(true)

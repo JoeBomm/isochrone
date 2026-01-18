@@ -16,11 +16,13 @@ export const CALCULATE_MINIMAX_CENTER = gql`
     $locations: [LocationInput!]!
     $travelMode: TravelMode!
     $bufferTimeMinutes: Int!
+    $optimizationConfig: OptimizationConfigInput
   ) {
     calculateMinimaxCenter(
       locations: $locations
       travelMode: $travelMode
       bufferTimeMinutes: $bufferTimeMinutes
+      optimizationConfig: $optimizationConfig
     ) {
       centerPoint {
         latitude

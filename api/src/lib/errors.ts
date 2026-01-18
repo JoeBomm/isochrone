@@ -21,6 +21,19 @@ export enum ErrorCode {
   ISOCHRONE_CALCULATION_FAILED = 'ISOCHRONE_CALCULATION_FAILED',
   MATRIX_CALCULATION_FAILED = 'MATRIX_CALCULATION_FAILED',
 
+  // Multi-phase optimization errors
+  COARSE_GRID_MATRIX_FAILED = 'COARSE_GRID_MATRIX_FAILED',
+  LOCAL_REFINEMENT_MATRIX_FAILED = 'LOCAL_REFINEMENT_MATRIX_FAILED',
+  MULTI_PHASE_OPTIMIZATION_FAILED = 'MULTI_PHASE_OPTIMIZATION_FAILED',
+  OPTIMIZATION_FALLBACK_FAILED = 'OPTIMIZATION_FALLBACK_FAILED',
+
+  // Configuration validation errors
+  INVALID_OPTIMIZATION_CONFIG = 'INVALID_OPTIMIZATION_CONFIG',
+  INVALID_GRID_RESOLUTION = 'INVALID_GRID_RESOLUTION',
+  INVALID_REFINEMENT_RADIUS = 'INVALID_REFINEMENT_RADIUS',
+  INVALID_TOP_K_SELECTION = 'INVALID_TOP_K_SELECTION',
+  API_USAGE_LIMIT_EXCEEDED = 'API_USAGE_LIMIT_EXCEEDED',
+
   // Geometry Calculation Errors
   NO_OVERLAPPING_AREAS = 'NO_OVERLAPPING_AREAS',
   GEOMETRY_CALCULATION_FAILED = 'GEOMETRY_CALCULATION_FAILED',
@@ -172,6 +185,91 @@ export const createMatrixCalculationError = (details?: string, originalError?: E
   })
 }
 
+export const createCoarseGridMatrixError = (details?: string, originalError?: Error): AppError => {
+  return new AppError({
+    code: ErrorCode.COARSE_GRID_MATRIX_FAILED,
+    message: `Coarse grid matrix calculation failed: ${details || 'Unknown error'}`,
+    userMessage: 'Failed to calculate travel times for coarse grid optimization. Falling back to baseline optimization.',
+    details: { phase: 'COARSE_GRID', matrixError: details },
+    originalError
+  })
+}
+
+export const createLocalRefinementMatrixError = (details?: string, originalError?: Error): AppError => {
+  return new AppError({
+    code: ErrorCode.LOCAL_REFINEMENT_MATRIX_FAILED,
+    message: `Local refinement matrix calculation failed: ${details || 'Unknown error'}`,
+    userMessage: 'Failed to calculate travel times for local refinement. Using coarse grid results.',
+    details: { phase: 'LOCAL_REFINEMENT', matrixError: details },
+    originalError
+  })
+}
+
+export const createMultiPhaseOptimizationError = (phase: string, details?: string, originalError?: Error): AppError => {
+  return new AppError({
+    code: ErrorCode.MULTI_PHASE_OPTIMIZATION_FAILED,
+    message: `Multi-phase optimization failed at ${phase}: ${details || 'Unknown error'}`,
+    userMessage: 'Advanced optimization failed. Falling back to basic optimization method.',
+    details: { failedPhase: phase, optimizationError: details },
+    originalError
+  })
+}
+
+export const createOptimizationFallbackError = (details?: string, originalError?: Error): AppError => {
+  return new AppError({
+    code: ErrorCode.OPTIMIZATION_FALLBACK_FAILED,
+    message: `Optimization fallback failed: ${details || 'Unknown error'}`,
+    userMessage: 'Unable to calculate optimal meeting point. Please check your locations and try again.',
+    details: { fallbackError: details },
+    originalError
+  })
+}
+
+export const createOptimizationConfigError = (field: string, value: any, details?: string): AppError => {
+  return new AppError({
+    code: ErrorCode.INVALID_OPTIMIZATION_CONFIG,
+    message: `Invalid optimization configuration for ${field}: ${details || 'Invalid value'}`,
+    userMessage: `Invalid optimization settings. Please check your configuration and try again.`,
+    details: { field, value, configError: details }
+  })
+}
+
+export const createGridResolutionError = (resolution: number, bounds: string): AppError => {
+  return new AppError({
+    code: ErrorCode.INVALID_GRID_RESOLUTION,
+    message: `Invalid grid resolution: ${resolution}. ${bounds}`,
+    userMessage: `Grid resolution must be within reasonable bounds for performance. Please adjust your settings.`,
+    details: { resolution, bounds }
+  })
+}
+
+export const createRefinementRadiusError = (radius: number, bounds: string): AppError => {
+  return new AppError({
+    code: ErrorCode.INVALID_REFINEMENT_RADIUS,
+    message: `Invalid refinement radius: ${radius}km. ${bounds}`,
+    userMessage: `Refinement radius must be within geographic constraints. Please adjust your settings.`,
+    details: { radius, bounds }
+  })
+}
+
+export const createTopKSelectionError = (topK: number, bounds: string): AppError => {
+  return new AppError({
+    code: ErrorCode.INVALID_TOP_K_SELECTION,
+    message: `Invalid top-K selection: ${topK}. ${bounds}`,
+    userMessage: `Number of candidates for refinement must be reasonable. Please adjust your settings.`,
+    details: { topK, bounds }
+  })
+}
+
+export const createApiUsageLimitError = (estimatedPoints: number, limit: number): AppError => {
+  return new AppError({
+    code: ErrorCode.API_USAGE_LIMIT_EXCEEDED,
+    message: `Configuration would generate ${estimatedPoints} hypothesis points, exceeding API limit of ${limit}`,
+    userMessage: `Your optimization settings would exceed API limits. Please reduce grid resolution or refinement parameters.`,
+    details: { estimatedPoints, limit }
+  })
+}
+
 // Error handler for GraphQL resolvers
 export const handleResolverError = (error: unknown, operation: string): never => {
   logger.error(`Error in ${operation}:`, error)
@@ -195,6 +293,24 @@ export const handleResolverError = (error: unknown, operation: string): never =>
       throw createNoOverlapError()
     } else if (message.includes('union') || message.includes('centroid')) {
       throw createGeometryError(operation, error)
+    } else if (message.includes('coarse grid matrix')) {
+      throw createCoarseGridMatrixError(error.message, error)
+    } else if (message.includes('local refinement matrix') || message.includes('phase 2 matrix')) {
+      throw createLocalRefinementMatrixError(error.message, error)
+    } else if (message.includes('multi-phase optimization')) {
+      throw createMultiPhaseOptimizationError('unknown', error.message, error)
+    } else if (message.includes('optimization fallback')) {
+      throw createOptimizationFallbackError(error.message, error)
+    } else if (message.includes('invalid optimization') || message.includes('optimization config')) {
+      throw createOptimizationConfigError('unknown', 'unknown', error.message)
+    } else if (message.includes('grid resolution')) {
+      throw createGridResolutionError(0, error.message)
+    } else if (message.includes('refinement radius')) {
+      throw createRefinementRadiusError(0, error.message)
+    } else if (message.includes('topk') || message.includes('top-k')) {
+      throw createTopKSelectionError(0, error.message)
+    } else if (message.includes('api usage') || message.includes('api limit')) {
+      throw createApiUsageLimitError(0, 0)
     }
   }
 
@@ -227,6 +343,24 @@ export const getUserFriendlyMessage = (error: unknown): string => {
       return 'Locations are too far apart - no overlapping travel areas found. Try increasing travel time or choosing closer locations.'
     } else if (message.includes('union') || message.includes('centroid')) {
       return 'Unable to calculate meeting point due to complex geographic constraints. Try adjusting travel times or location selection.'
+    } else if (message.includes('coarse grid matrix')) {
+      return 'Advanced optimization failed. Using basic optimization method instead.'
+    } else if (message.includes('local refinement matrix') || message.includes('phase 2 matrix')) {
+      return 'Local refinement optimization failed. Using coarse grid results instead.'
+    } else if (message.includes('multi-phase optimization')) {
+      return 'Advanced optimization failed. Falling back to basic optimization method.'
+    } else if (message.includes('optimization fallback')) {
+      return 'Unable to calculate optimal meeting point. Please check your locations and try again.'
+    } else if (message.includes('invalid optimization') || message.includes('optimization config')) {
+      return 'Invalid optimization settings. Please check your configuration and try again.'
+    } else if (message.includes('grid resolution')) {
+      return 'Grid resolution must be within reasonable bounds for performance. Please adjust your settings.'
+    } else if (message.includes('refinement radius')) {
+      return 'Refinement radius must be within geographic constraints. Please adjust your settings.'
+    } else if (message.includes('topk') || message.includes('top-k')) {
+      return 'Number of candidates for refinement must be reasonable. Please adjust your settings.'
+    } else if (message.includes('api usage') || message.includes('api limit')) {
+      return 'Your optimization settings would exceed API limits. Please reduce grid resolution or refinement parameters.'
     }
 
     return error.message

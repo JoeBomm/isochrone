@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import Map, { type Coordinate } from 'src/components/Map/Map'
+import Map, { type Coordinate, type HypothesisPoint } from 'src/components/Map/Map'
 import MapErrorBoundary from 'src/components/ErrorBoundary/MapErrorBoundary'
 import ErrorBoundary from 'src/components/ErrorBoundary/ErrorBoundary'
 import type { Location } from 'src/components/LocationInput/LocationInput'
@@ -10,9 +10,18 @@ interface MainLayoutProps {
   locations?: Location[]
   centerPoint?: Coordinate
   fairMeetingArea?: GeoJSON.Polygon
+  hypothesisPoints?: HypothesisPoint[]
+  showHypothesisPoints?: boolean
 }
 
-const MainLayout = ({ children, locations = [], centerPoint, fairMeetingArea }: MainLayoutProps) => {
+const MainLayout = ({
+  children,
+  locations = [],
+  centerPoint,
+  fairMeetingArea,
+  hypothesisPoints = [],
+  showHypothesisPoints = false
+}: MainLayoutProps) => {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
@@ -38,6 +47,8 @@ const MainLayout = ({ children, locations = [], centerPoint, fairMeetingArea }: 
             locations={locations}
             centerPoint={centerPoint}
             fairMeetingArea={fairMeetingArea}
+            hypothesisPoints={hypothesisPoints}
+            showHypothesisPoints={showHypothesisPoints}
           />
         </MapErrorBoundary>
       </div>

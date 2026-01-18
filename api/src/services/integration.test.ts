@@ -19,6 +19,29 @@ jest.mock('src/lib/geometry', () => {
     { latitude: 40.7164, longitude: -74.008 }
   ]
 
+  const mockBoundingBox = {
+    north: 40.73,
+    south: 40.70,
+    east: -73.99,
+    west: -74.02
+  }
+
+  const mockCoarseGridPoints = [
+    { latitude: 40.705, longitude: -74.015 },
+    { latitude: 40.705, longitude: -74.005 },
+    { latitude: 40.715, longitude: -74.015 },
+    { latitude: 40.715, longitude: -74.005 },
+    { latitude: 40.725, longitude: -74.015 },
+    { latitude: 40.725, longitude: -74.005 }
+  ]
+
+  const mockLocalRefinementPoints = [
+    { latitude: 40.7145, longitude: -74.0075 },
+    { latitude: 40.7155, longitude: -74.0075 },
+    { latitude: 40.7145, longitude: -74.0025 },
+    { latitude: 40.7155, longitude: -74.0025 }
+  ]
+
   return {
     geometryService: {
       calculatePolygonUnion: jest.fn().mockReturnValue(mockPolygon),
@@ -27,7 +50,10 @@ jest.mock('src/lib/geometry', () => {
       calculateGeographicCentroid: jest.fn().mockReturnValue(mockCentroid),
       calculateMedianCoordinate: jest.fn().mockReturnValue(mockCentroid),
       calculatePairwiseMidpoints: jest.fn().mockReturnValue(mockPairwiseMidpoints),
-      validateCoordinateBounds: jest.fn().mockReturnValue(true)
+      validateCoordinateBounds: jest.fn().mockReturnValue(true),
+      calculateBoundingBox: jest.fn().mockReturnValue(mockBoundingBox),
+      generateCoarseGridPoints: jest.fn().mockReturnValue(mockCoarseGridPoints),
+      generateLocalRefinementPoints: jest.fn().mockReturnValue(mockLocalRefinementPoints)
     },
     TurfGeometryService: jest.fn().mockImplementation(() => ({
       calculatePolygonUnion: jest.fn().mockReturnValue(mockPolygon),
@@ -36,7 +62,10 @@ jest.mock('src/lib/geometry', () => {
       calculateGeographicCentroid: jest.fn().mockReturnValue(mockCentroid),
       calculateMedianCoordinate: jest.fn().mockReturnValue(mockCentroid),
       calculatePairwiseMidpoints: jest.fn().mockReturnValue(mockPairwiseMidpoints),
-      validateCoordinateBounds: jest.fn().mockReturnValue(true)
+      validateCoordinateBounds: jest.fn().mockReturnValue(true),
+      calculateBoundingBox: jest.fn().mockReturnValue(mockBoundingBox),
+      generateCoarseGridPoints: jest.fn().mockReturnValue(mockCoarseGridPoints),
+      generateLocalRefinementPoints: jest.fn().mockReturnValue(mockLocalRefinementPoints)
     }))
   }
 })
@@ -58,20 +87,137 @@ jest.mock('src/lib/cachedOpenroute', () => ({
     calculateTravelTimeMatrix: jest.fn().mockResolvedValue({
       origins: [
         { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
-        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 },
+        { id: 'origin_2', name: 'Origin 3', latitude: 40.7300, longitude: -74.0200 }
       ],
       destinations: [
         { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
         { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
         { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
         { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
-        { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        { id: 'destination_4', coordinate: { latitude: 40.7300, longitude: -74.0200 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_5', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+        { id: 'destination_6', coordinate: { latitude: 40.7214, longitude: -74.013 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+        { id: 'destination_7', coordinate: { latitude: 40.7250, longitude: -74.015 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
       ],
       travelTimes: [
-        [10, 10, 5, 15, 12], // Travel times from origin 0 to all destinations (in minutes)
-        [15, 15, 20, 5, 12]  // Travel times from origin 1 to all destinations (in minutes)
+        [10, 10, 5, 15, 25, 12, 18, 20], // Travel times from origin 0 to all destinations (in minutes)
+        [15, 15, 20, 5, 15, 12, 8, 12],  // Travel times from origin 1 to all destinations (in minutes)
+        [25, 25, 30, 20, 5, 22, 18, 8]   // Travel times from origin 2 to all destinations (in minutes)
       ],
       travelMode: 'DRIVING_CAR'
+    })
+  }
+}))
+
+// Mock the matrix service for integration tests
+jest.mock('src/lib/matrix', () => ({
+  matrixService: {
+    findMinimaxOptimal: jest.fn().mockReturnValue({
+      optimalIndex: 7,
+      maxTravelTime: 20,
+      averageTravelTime: 16.0
+    }),
+    evaluateBatchedMatrix: jest.fn().mockResolvedValue({
+      combinedMatrix: {
+        origins: [
+          { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 },
+          { id: 'origin_2', name: 'Origin 3', latitude: 40.7300, longitude: -74.0200 }
+        ],
+        destinations: [
+          { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_4', coordinate: { latitude: 40.7300, longitude: -74.0200 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_5', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+          { id: 'destination_6', coordinate: { latitude: 40.7214, longitude: -74.013 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+          { id: 'destination_7', coordinate: { latitude: 40.7250, longitude: -74.015 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        ],
+        travelTimes: [
+          [10, 10, 5, 15, 25, 12, 18, 20],
+          [15, 15, 20, 5, 15, 12, 8, 12],
+          [25, 25, 30, 20, 5, 22, 18, 8]
+        ],
+        travelMode: 'DRIVING_CAR'
+      },
+      phaseResults: [{
+        phase: 'PHASE_0',
+        matrix: {
+          origins: [
+            { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+            { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+          ],
+          destinations: [
+            { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+            { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+            { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+          ],
+          travelTimes: [
+            [10, 10, 5, 15, 12],
+            [15, 15, 20, 5, 12]
+          ],
+          travelMode: 'DRIVING_CAR'
+        },
+        hypothesisPoints: [
+          { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        ],
+        startIndex: 0,
+        endIndex: 5
+      }],
+      totalHypothesisPoints: [
+        { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+        { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+        { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+      ]
+    }),
+    evaluatePhase2Matrix: jest.fn().mockResolvedValue({
+      origins: [
+        { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+      ],
+      destinations: [],
+      travelTimes: [[], []],
+      travelMode: 'DRIVING_CAR'
+    }),
+    findMultiPhaseMinimaxOptimal: jest.fn().mockReturnValue({
+      optimalIndex: 4,
+      maxTravelTime: 12,
+      averageTravelTime: 12.0,
+      optimalPhase: 'PHASE_0',
+      optimalHypothesisPoint: {
+        id: 'destination_4',
+        coordinate: { latitude: 40.7164, longitude: -74.008 },
+        type: 'PAIRWISE_MIDPOINT',
+        metadata: null
+      }
+    }),
+    validateEpsilonOptimalityImprovement: jest.fn().mockReturnValue({
+      hasImprovement: true,
+      improvementMinutes: 2,
+      improvementPercentage: 13.3,
+      isSignificant: true
+    }),
+    mergeMatrixResults: jest.fn().mockImplementation((batchedResult, phase2Result) => {
+      if (phase2Result) {
+        return {
+          ...batchedResult.combinedMatrix,
+          destinations: [...batchedResult.combinedMatrix.destinations, ...phase2Result.matrix.destinations],
+          travelTimes: batchedResult.combinedMatrix.travelTimes.map((row, i) =>
+            [...row, ...phase2Result.matrix.travelTimes[i]]
+          )
+        }
+      }
+      return batchedResult.combinedMatrix
     })
   }
 }))
@@ -106,6 +252,92 @@ describe('Integration Tests - Complete User Workflows', () => {
       { latitude: 40.7164, longitude: -74.008 }
     ])
     geometryService.validateCoordinateBounds.mockReturnValue(true)
+
+    // Reset matrix service mocks
+    const { matrixService } = require('src/lib/matrix')
+    matrixService.findMinimaxOptimal.mockReturnValue({
+      optimalIndex: 4,
+      maxTravelTime: 12,
+      averageTravelTime: 12.0
+    })
+    matrixService.evaluateBatchedMatrix.mockResolvedValue({
+      combinedMatrix: {
+        origins: [
+          { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+        ],
+        destinations: [
+          { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        ],
+        travelTimes: [
+          [10, 10, 5, 15, 12],
+          [15, 15, 20, 5, 12]
+        ],
+        travelMode: 'DRIVING_CAR'
+      },
+      phaseResults: [{
+        phase: 'PHASE_0',
+        matrix: {
+          origins: [
+            { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+            { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+          ],
+          destinations: [
+            { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+            { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+            { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+          ],
+          travelTimes: [
+            [10, 10, 5, 15, 12],
+            [15, 15, 20, 5, 12]
+          ],
+          travelMode: 'DRIVING_CAR'
+        },
+        hypothesisPoints: [
+          { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        ],
+        startIndex: 0,
+        endIndex: 5
+      }],
+      totalHypothesisPoints: [
+        { id: 'destination_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+        { id: 'destination_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+        { id: 'destination_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'destination_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+      ]
+    })
+    matrixService.evaluatePhase2Matrix.mockResolvedValue({
+      origins: [
+        { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+        { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+      ],
+      destinations: [],
+      travelTimes: [[], []],
+      travelMode: 'DRIVING_CAR'
+    })
+    matrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
+      optimalIndex: 4,
+      maxTravelTime: 12,
+      averageTravelTime: 12.0,
+      optimalPhase: 'PHASE_0',
+      optimalHypothesisPoint: {
+        id: 'destination_4',
+        coordinate: { latitude: 40.7164, longitude: -74.008 },
+        type: 'PAIRWISE_MIDPOINT',
+        metadata: null
+      }
+    })
 
     // Reset OpenRoute client mocks
     const { cachedOpenRouteClient } = require('src/lib/cachedOpenroute')
@@ -407,6 +639,643 @@ describe('Integration Tests - Complete User Workflows', () => {
 
       expect(result).toHaveProperty('centerPoint')
       expect(result).toHaveProperty('fairMeetingArea')
+    })
+  })
+})
+
+describe('Multi-Phase Optimization Integration Tests', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    jest.resetAllMocks()
+
+    // Setup matrix service mocks for multi-phase
+    const { matrixService } = require('src/lib/matrix')
+    matrixService.evaluateBatchedMatrix.mockResolvedValue({
+      combinedMatrix: {
+        origins: [
+          { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+        ],
+        destinations: [
+          // Phase 0 points
+          { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+          // Phase 1 points
+          { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+          { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+          { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+          { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+          { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+          { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+        ],
+        travelTimes: [
+          [10, 10, 5, 15, 12, 18, 12, 16, 10, 20, 14], // From origin 0
+          [15, 15, 20, 5, 12, 22, 16, 20, 15, 8, 18]   // From origin 1
+        ],
+        travelMode: 'DRIVING_CAR'
+      },
+      phaseResults: [
+        {
+          phase: 'PHASE_0',
+          matrix: {
+            origins: [
+              { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+              { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+            ],
+            destinations: [
+              { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+              { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+              { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+              { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+              { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+            ],
+            travelTimes: [
+              [10, 10, 5, 15, 12],
+              [15, 15, 20, 5, 12]
+            ],
+            travelMode: 'DRIVING_CAR'
+          },
+          hypothesisPoints: [
+            { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+            { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+            { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+          ],
+          startIndex: 0,
+          endIndex: 5
+        },
+        {
+          phase: 'PHASE_1',
+          matrix: {
+            origins: [
+              { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+              { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+            ],
+            destinations: [
+              { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+              { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+              { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+              { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+              { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+              { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+            ],
+            travelTimes: [
+              [18, 12, 16, 10, 20, 14],
+              [22, 16, 20, 15, 8, 18]
+            ],
+            travelMode: 'DRIVING_CAR'
+          },
+          hypothesisPoints: [
+            { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+            { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+            { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+            { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+            { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+            { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+          ],
+          startIndex: 5,
+          endIndex: 11
+        }
+      ],
+      totalHypothesisPoints: [
+        { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+        { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+        { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+        { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
+        { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+        { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+        { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+        { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
+        { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
+        { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+      ]
+    })
+
+    matrixService.evaluatePhase2Matrix.mockResolvedValue({
+      phase: 'PHASE_2',
+      matrix: {
+        origins: [
+          { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+          { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+        ],
+        destinations: [
+          { id: 'dest_11', coordinate: { latitude: 40.7145, longitude: -74.0075 }, type: 'LOCAL_REFINEMENT', metadata: null },
+          { id: 'dest_12', coordinate: { latitude: 40.7155, longitude: -74.0075 }, type: 'LOCAL_REFINEMENT', metadata: null },
+          { id: 'dest_13', coordinate: { latitude: 40.7145, longitude: -74.0025 }, type: 'LOCAL_REFINEMENT', metadata: null },
+          { id: 'dest_14', coordinate: { latitude: 40.7155, longitude: -74.0025 }, type: 'LOCAL_REFINEMENT', metadata: null }
+        ],
+        travelTimes: [
+          [9, 11, 8, 10],
+          [14, 16, 13, 15]
+        ],
+        travelMode: 'DRIVING_CAR'
+      },
+      hypothesisPoints: [
+        { id: 'dest_11', coordinate: { latitude: 40.7145, longitude: -74.0075 }, type: 'LOCAL_REFINEMENT', metadata: null },
+        { id: 'dest_12', coordinate: { latitude: 40.7155, longitude: -74.0075 }, type: 'LOCAL_REFINEMENT', metadata: null },
+        { id: 'dest_13', coordinate: { latitude: 40.7145, longitude: -74.0025 }, type: 'LOCAL_REFINEMENT', metadata: null },
+        { id: 'dest_14', coordinate: { latitude: 40.7155, longitude: -74.0025 }, type: 'LOCAL_REFINEMENT', metadata: null }
+      ],
+      startIndex: 0,
+      endIndex: 4
+    })
+
+    matrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
+      optimalIndex: 13, // Phase 2 refinement point
+      maxTravelTime: 13,
+      averageTravelTime: 10.5,
+      optimalPhase: 'PHASE_2',
+      optimalHypothesisPoint: {
+        id: 'dest_13',
+        coordinate: { latitude: 40.7145, longitude: -74.0025 },
+        type: 'LOCAL_REFINEMENT',
+        metadata: null
+      }
+    })
+
+    matrixService.validateEpsilonOptimalityImprovement.mockReturnValue({
+      hasImprovement: true,
+      improvementMinutes: 2,
+      improvementPercentage: 13.3,
+      isSignificant: true
+    })
+
+    matrixService.mergeMatrixResults = jest.fn().mockImplementation((batchedResult, phase2Result) => {
+      if (phase2Result) {
+        return {
+          ...batchedResult.combinedMatrix,
+          destinations: [...batchedResult.combinedMatrix.destinations, ...phase2Result.matrix.destinations],
+          travelTimes: batchedResult.combinedMatrix.travelTimes.map((row, i) =>
+            [...row, ...phase2Result.matrix.travelTimes[i]]
+          )
+        }
+      }
+      return batchedResult.combinedMatrix
+    })
+  })
+
+  describe('BASELINE optimization mode', () => {
+    it('should complete workflow with Phase 0 only', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'BASELINE',
+          coarseGridConfig: {
+            enabled: false,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: false,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      expect(result).toHaveProperty('centerPoint')
+      expect(result).toHaveProperty('fairMeetingArea')
+      expect(result).toHaveProperty('optimizationMetadata')
+      expect(result.optimizationMetadata?.mode).toBe('BASELINE')
+      expect(result.optimizationMetadata?.totalHypothesisPoints).toBe(7) // Phase 0 only: 1 centroid + 1 median + 3 participants + 3 pairwise midpoints
+    })
+  })
+
+  describe('COARSE_GRID optimization mode', () => {
+    it('should complete workflow with Phase 0+1', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'COARSE_GRID',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: false,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      expect(result).toHaveProperty('centerPoint')
+      expect(result).toHaveProperty('fairMeetingArea')
+      expect(result).toHaveProperty('optimizationMetadata')
+      expect(result.optimizationMetadata?.mode).toBe('COARSE_GRID')
+      expect(result.optimizationMetadata?.totalHypothesisPoints).toBe(32) // Phase 0 (7) + Phase 1 (25)
+
+      // Verify batched matrix evaluation was called
+      const { matrixService } = require('src/lib/matrix')
+      expect(matrixService.evaluateBatchedMatrix).toHaveBeenCalledTimes(1)
+      expect(matrixService.evaluatePhase2Matrix).not.toHaveBeenCalled()
+    })
+
+    it('should handle API call optimization for Phase 0+1', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'COARSE_GRID',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: false,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      // Verify only one Matrix API call was made for Phase 0+1 combined
+      const { cachedOpenRouteClient } = require('src/lib/cachedOpenroute')
+      expect(cachedOpenRouteClient.calculateTravelTimeMatrix).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('FULL_REFINEMENT optimization mode', () => {
+    it('should complete workflow with all phases (0+1+2)', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: true,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      expect(result).toHaveProperty('centerPoint')
+      expect(result).toHaveProperty('fairMeetingArea')
+      expect(result).toHaveProperty('optimizationMetadata')
+      expect(result.optimizationMetadata?.mode).toBe('FULL_REFINEMENT')
+      expect(result.optimizationMetadata?.totalHypothesisPoints).toBe(59) // Phase 0 (7) + Phase 1 (25) + Phase 2 (27)
+
+      // Verify both batched and Phase 2 matrix evaluations were called
+      const { matrixService } = require('src/lib/matrix')
+      expect(matrixService.evaluateBatchedMatrix).toHaveBeenCalledTimes(1)
+      expect(matrixService.evaluatePhase2Matrix).toHaveBeenCalledTimes(1)
+    })
+
+    it('should demonstrate ε-optimality improvement', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: true,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      expect(result.optimizationMetadata?.improvementValidation).toBeDefined()
+      expect(result.optimizationMetadata?.improvementValidation?.hasImprovement).toBe(true)
+      expect(result.optimizationMetadata?.improvementValidation?.isSignificant).toBe(true)
+      expect(result.optimizationMetadata?.improvementValidation?.improvementMinutes).toBe(2)
+    })
+
+    it('should handle maximum API call limit (2 calls)', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: true,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      // Verify exactly 2 Matrix API calls were made (1 for Phase 0+1, 1 for Phase 2)
+      const { cachedOpenRouteClient } = require('src/lib/cachedOpenroute')
+      expect(cachedOpenRouteClient.calculateTravelTimeMatrix).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('Multi-phase error handling and fallback', () => {
+    it('should fall back to Phase 0 when coarse grid fails', async () => {
+      const { matrixService } = require('src/lib/matrix')
+
+      // Mock coarse grid failure
+      matrixService.evaluateBatchedMatrix.mockRejectedValueOnce(
+        new Error('Coarse grid matrix evaluation failed')
+      )
+
+      // Mock fallback to Phase 0 only
+      matrixService.evaluateBatchedMatrix.mockResolvedValueOnce({
+        combinedMatrix: {
+          origins: [
+            { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+            { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+          ],
+          destinations: [
+            { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+            { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+            { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+          ],
+          travelTimes: [
+            [10, 10, 5, 15, 12],
+            [15, 15, 20, 5, 12]
+          ],
+          travelMode: 'DRIVING_CAR'
+        },
+        phaseResults: [{
+          phase: 'PHASE_0',
+          matrix: {
+            origins: [
+              { id: 'origin_0', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+              { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
+            ],
+            destinations: [
+              { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+              { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+              { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+              { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+              { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+            ],
+            travelTimes: [
+              [10, 10, 5, 15, 12],
+              [15, 15, 20, 5, 12]
+            ],
+            travelMode: 'DRIVING_CAR'
+          },
+          hypothesisPoints: [
+            { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+            { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+            { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+            { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+          ],
+          startIndex: 0,
+          endIndex: 5
+        }],
+        totalHypothesisPoints: [
+          { id: 'dest_0', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'GEOGRAPHIC_CENTROID', metadata: null },
+          { id: 'dest_1', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'MEDIAN_COORDINATE', metadata: null },
+          { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
+          { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null }
+        ]
+      })
+
+      matrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
+        optimalIndex: 4,
+        maxTravelTime: 12,
+        averageTravelTime: 12.0,
+        optimalPhase: 'PHASE_0',
+        optimalHypothesisPoint: {
+          id: 'dest_4',
+          coordinate: { latitude: 40.7164, longitude: -74.008 },
+          type: 'PAIRWISE_MIDPOINT',
+          metadata: null
+        }
+      })
+
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'COARSE_GRID',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: false,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      // Should still return a valid result from Phase 0 fallback
+      expect(result).toHaveProperty('centerPoint')
+      expect(result).toHaveProperty('fairMeetingArea')
+      expect(result.optimizationMetadata?.totalHypothesisPoints).toBe(7) // Phase 0 only
+    })
+
+    it('should continue without Phase 2 when local refinement fails', async () => {
+      const { matrixService } = require('src/lib/matrix')
+
+      // Mock Phase 2 failure
+      matrixService.evaluatePhase2Matrix.mockRejectedValueOnce(
+        new Error('Local refinement matrix evaluation failed')
+      )
+
+      matrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
+        optimalIndex: 8, // Phase 1 result
+        maxTravelTime: 15,
+        averageTravelTime: 13.5,
+        optimalPhase: 'PHASE_1',
+        optimalHypothesisPoint: {
+          id: 'dest_8',
+          coordinate: { latitude: 40.715, longitude: -74.005 },
+          type: 'COARSE_GRID',
+          metadata: null
+        }
+      })
+
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      const result = await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: {
+            enabled: true,
+            paddingKm: 5,
+            gridResolution: 5
+          },
+          localRefinementConfig: {
+            enabled: true,
+            topK: 3,
+            refinementRadiusKm: 2,
+            fineGridResolution: 3
+          }
+        }
+      })
+
+      // Should return result from Phase 0+1 without Phase 2
+      expect(result).toHaveProperty('centerPoint')
+      expect(result).toHaveProperty('fairMeetingArea')
+      expect(result.optimizationMetadata?.totalHypothesisPoints).toBe(32) // Phase 0 (7) + Phase 1 (25) only
+    })
+  })
+
+  describe('Performance validation', () => {
+    it('should respect API usage limits across all optimization modes', async () => {
+      const testLocations = [
+        { name: 'Location A', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location B', latitude: 40.7200, longitude: -74.0100 },
+        { name: 'Location C', latitude: 40.7300, longitude: -74.0200 }
+      ]
+
+      // Test BASELINE mode (1 API call expected)
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'BASELINE',
+          coarseGridConfig: { enabled: false, paddingKm: 5, gridResolution: 5 },
+          localRefinementConfig: { enabled: false, topK: 3, refinementRadiusKm: 2, fineGridResolution: 3 }
+        }
+      })
+
+      // Test COARSE_GRID mode (1 API call expected)
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'COARSE_GRID',
+          coarseGridConfig: { enabled: true, paddingKm: 5, gridResolution: 5 },
+          localRefinementConfig: { enabled: false, topK: 3, refinementRadiusKm: 2, fineGridResolution: 3 }
+        }
+      })
+
+      // Test FULL_REFINEMENT mode (2 API calls expected)
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: { enabled: true, paddingKm: 5, gridResolution: 5 },
+          localRefinementConfig: { enabled: true, topK: 3, refinementRadiusKm: 2, fineGridResolution: 3 }
+        }
+      })
+
+      // Verify total API calls don't exceed limits
+      const { cachedOpenRouteClient } = require('src/lib/cachedOpenroute')
+      const totalCalls = cachedOpenRouteClient.calculateTravelTimeMatrix.mock.calls.length
+      expect(totalCalls).toBeLessThanOrEqual(4) // 1 + 1 + 2 = 4 calls maximum
+    })
+
+    it('should validate hypothesis point generation performance', async () => {
+      const testLocations = Array.from({ length: 5 }, (_, i) => ({
+        name: `Location ${i + 1}`,
+        latitude: 40.7128 + i * 0.01,
+        longitude: -74.0060 + i * 0.01
+      }))
+
+      const startTime = Date.now()
+
+      await calculateMinimaxCenter({
+        locations: testLocations,
+        bufferTimeMinutes: 10,
+        travelMode: 'DRIVING_CAR',
+        optimizationConfig: {
+          mode: 'FULL_REFINEMENT',
+          coarseGridConfig: { enabled: true, paddingKm: 5, gridResolution: 10 },
+          localRefinementConfig: { enabled: true, topK: 5, refinementRadiusKm: 2, fineGridResolution: 5 }
+        }
+      })
+
+      const endTime = Date.now()
+      const executionTime = endTime - startTime
+
+      // Should complete within reasonable time (adjust threshold as needed)
+      expect(executionTime).toBeLessThan(5000) // 5 seconds
     })
   })
 })

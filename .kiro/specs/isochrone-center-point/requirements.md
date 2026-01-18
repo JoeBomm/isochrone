@@ -2,20 +2,21 @@
 
 ## Introduction
 
-Transform the existing isochrone mapping application from vanilla HTML/JavaScript to RedwoodJS SDK and add a new "fair meeting point" feature that calculates the optimal meeting location using a matrix-based minimax travel-time approach. This enables users to find equitable meeting locations that minimize the maximum travel time for all participants by evaluating strategic hypothesis points using actual travel time data.
+Update the existing isochrone center point application to support multi-phase hypothesis generation with cost-controlled API usage. This MVP-focused update introduces algorithm toggles, developer visualization options, and deferred isochrone calculations to minimize API costs while enabling experimentation with different optimization strategies.
 
 ## Glossary
 
-- **Isochrone**: A polygon representing areas reachable within a specified travel time from a given point
-- **Minimax_Travel_Time_Center**: The optimal meeting point that minimizes the maximum travel time from all participant locations
-- **Hypothesis_Point**: A candidate meeting point generated using strategic algorithms (geographic centroid, median coordinates, participant locations, pairwise midpoints)
-- **Travel_Time_Matrix**: A matrix containing travel times from all participant locations to all hypothesis points
-- **Fair_Meeting_Area**: The isochrone area calculated from the minimax center point with a buffer time for visualization
-- **Matrix_Evaluated_Hypothesis_Set**: The complete set of candidate meeting points evaluated using the OpenRouteService Matrix API
-- **Buffer_Time**: Additional travel time added to the center point visualization to show flexible meeting areas (does not influence meeting point selection)
-- **RedwoodJS_App**: The full-stack application built using RedwoodJS framework
-- **API_Service**: The backend service handling matrix calculations, isochrone visualization, geocoding, and API key management with intelligent caching
-- **Cache_Service**: The caching layer that stores Matrix API responses and isochrone data with location-based and time-based keys
+- **Hypothesis_Point**: A candidate meeting point generated through various algorithms (anchors, grid sampling, local refinement)
+- **Anchor_Point**: Baseline hypothesis points using existing logic (geographic centroid, median coordinates, participant locations, pairwise midpoints)
+- **Coarse_Grid**: A grid subdivision of the bounding box containing all input locations, with grid cell centers as hypothesis points
+- **Local_Grid**: A finer grid centered on top-performing coarse grid points for refinement
+- **Bounding_Box**: The rectangular area that encloses all input locations
+- **Matrix_API**: OpenRouteService Matrix API for evaluating travel times between locations and hypothesis points
+- **Isochrone_API**: OpenRouteService Isochrone API for generating travel time polygons (cost-controlled)
+- **Proximity_Deduplication**: Algorithm to merge nearby final points and recalculate rankings
+- **Developer_Options**: Debug visualization mode showing all hypothesis points with color coding
+- **Algorithm_Toggle**: UI controls to enable/disable different hypothesis generation phases
+- **Points_of_Interest**: Top N hypothesis points displayed before isochrone calculation
 
 ## Requirements
 

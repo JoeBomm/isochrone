@@ -4,8 +4,9 @@ import { MetaTags } from '@redwoodjs/web'
 
 import MainLayout from 'src/layouts/MainLayout/MainLayout'
 import LocationInput, { type Location } from 'src/components/LocationInput/LocationInput'
-import IsochroneControls, { type TravelMode } from 'src/components/IsochroneControls/IsochroneControls'
-import Map, { type Coordinate } from 'src/components/Map/Map'
+import IsochroneControls, { type TravelMode, type OptimizationConfig } from 'src/components/IsochroneControls/IsochroneControls'
+import Map, { type Coordinate, type HypothesisPoint } from 'src/components/Map/Map'
+import DebugControls from 'src/components/DebugControls/DebugControls'
 import ToastContainer from 'src/components/Toast/ToastContainer'
 import LoadingOverlay from 'src/components/LoadingSpinner/LoadingOverlay'
 import { useToast } from 'src/hooks/useToast'
@@ -21,12 +22,30 @@ const HomePage = () => {
   // Isochrone calculation settings
   const [travelMode, setTravelMode] = useState<TravelMode>('DRIVING_CAR')
   const [slackTime, setSlackTime] = useState(10)
+  const [optimizationConfig, setOptimizationConfig] = useState<OptimizationConfig>({
+    mode: 'BASELINE',
+    coarseGridConfig: {
+      enabled: false,
+      paddingKm: 5,
+      gridResolution: 5
+    },
+    localRefinementConfig: {
+      enabled: false,
+      topK: 3,
+      refinementRadiusKm: 2,
+      fineGridResolution: 3
+    }
+  })
   const [isCalculating, setIsCalculating] = useState(false)
 
   // Results state
   const [centerPoint, setCenterPoint] = useState<Coordinate | undefined>()
   const [fairMeetingArea, setFairMeetingArea] = useState<GeoJSON.Polygon | undefined>()
+  const [hypothesisPoints, setHypothesisPoints] = useState<HypothesisPoint[]>([])
   const [calculationError, setCalculationError] = useState<string>('')
+
+  // Debug visualization state
+  const [showHypothesisPoints, setShowHypothesisPoints] = useState(false)
 
   // GraphQL mutation for calculating minimax center
   const [calculateMinimaxCenter] = useMutation(CALCULATE_MINIMAX_CENTER, {
@@ -36,6 +55,11 @@ const HomePage = () => {
         setCenterPoint(result.centerPoint)
         setFairMeetingArea(result.fairMeetingArea)
         setCalculationError('')
+
+        // TODO: Update backend to return hypothesis points in GraphQL response
+        // For now, generate mock hypothesis points for demonstration
+        const mockHypothesisPoints = generateMockHypothesisPoints(locations, result.centerPoint)
+        setHypothesisPoints(mockHypothesisPoints)
 
         // Show success notification
         showSuccess(
@@ -49,6 +73,7 @@ const HomePage = () => {
       console.error('Calculation error:', error)
       const errorMessage = error.message || 'Failed to calculate meeting point'
       setCalculationError(errorMessage)
+      setHypothesisPoints([]) // Clear hypothesis points on error
       setIsCalculating(false)
 
       // Show error notification
@@ -74,6 +99,7 @@ const HomePage = () => {
       if (centerPoint || fairMeetingArea) {
         setCenterPoint(undefined)
         setFairMeetingArea(undefined)
+        setHypothesisPoints([])
         setCalculationError('')
       }
     } else {
@@ -97,6 +123,7 @@ const HomePage = () => {
     // Clear results when locations change
     setCenterPoint(undefined)
     setFairMeetingArea(undefined)
+    setHypothesisPoints([])
     setCalculationError('')
   }
 
@@ -123,11 +150,28 @@ const HomePage = () => {
         longitude: location.longitude
       }))
 
+      // Prepare optimization configuration for GraphQL
+      const optimizationConfigInput = {
+        mode: optimizationConfig.mode,
+        coarseGridConfig: optimizationConfig.coarseGridConfig ? {
+          enabled: optimizationConfig.coarseGridConfig.enabled,
+          paddingKm: optimizationConfig.coarseGridConfig.paddingKm,
+          gridResolution: optimizationConfig.coarseGridConfig.gridResolution
+        } : null,
+        localRefinementConfig: optimizationConfig.localRefinementConfig ? {
+          enabled: optimizationConfig.localRefinementConfig.enabled,
+          topK: optimizationConfig.localRefinementConfig.topK,
+          refinementRadiusKm: optimizationConfig.localRefinementConfig.refinementRadiusKm,
+          fineGridResolution: optimizationConfig.localRefinementConfig.fineGridResolution
+        } : null
+      }
+
       await calculateMinimaxCenter({
         variables: {
           locations: locationInputs,
           travelMode: travelMode,
-          bufferTimeMinutes: slackTime
+          bufferTimeMinutes: slackTime,
+          optimizationConfig: optimizationConfigInput
         }
       })
     } catch (error) {
@@ -162,6 +206,8 @@ const HomePage = () => {
         locations={locations}
         centerPoint={centerPoint}
         fairMeetingArea={fairMeetingArea}
+        hypothesisPoints={hypothesisPoints}
+        showHypothesisPoints={showHypothesisPoints}
       >
         <div className="space-y-6">
           {/* Location Input Section */}
@@ -188,13 +234,24 @@ const HomePage = () => {
             <IsochroneControls
               travelMode={travelMode}
               slackTime={slackTime}
+              optimizationConfig={optimizationConfig}
               onTravelModeChange={setTravelMode}
               onSlackTimeChange={setSlackTime}
+              onOptimizationConfigChange={setOptimizationConfig}
               onCalculate={handleCalculate}
               isCalculating={isCalculating}
               canCalculate={canCalculate}
             />
           </div>
+
+          {/* Debug Controls Section */}
+          {hypothesisPoints.length > 0 && (
+            <DebugControls
+              hypothesisPoints={hypothesisPoints}
+              showHypothesisPoints={showHypothesisPoints}
+              onToggleHypothesisPoints={setShowHypothesisPoints}
+            />
+          )}
 
           {/* Results Section */}
           <div className="bg-gray-50 p-4 rounded-lg">
@@ -272,6 +329,92 @@ const HomePage = () => {
       </MainLayout>
     </>
   )
+}
+
+// TODO: Remove this mock function when backend returns actual hypothesis points
+// Generate mock hypothesis points for demonstration purposes
+const generateMockHypothesisPoints = (locations: Location[], centerPoint: Coordinate): HypothesisPoint[] => {
+  const mockPoints: HypothesisPoint[] = []
+
+  if (locations.length === 0) return mockPoints
+
+  // Add geographic centroid
+  const avgLat = locations.reduce((sum, loc) => sum + loc.latitude, 0) / locations.length
+  const avgLng = locations.reduce((sum, loc) => sum + loc.longitude, 0) / locations.length
+  mockPoints.push({
+    id: 'geographic_centroid',
+    coordinate: { latitude: avgLat, longitude: avgLng },
+    type: 'GEOGRAPHIC_CENTROID',
+    metadata: {}
+  })
+
+  // Add median coordinate
+  const sortedLats = locations.map(loc => loc.latitude).sort((a, b) => a - b)
+  const sortedLngs = locations.map(loc => loc.longitude).sort((a, b) => a - b)
+  const medianLat = sortedLats[Math.floor(sortedLats.length / 2)]
+  const medianLng = sortedLngs[Math.floor(sortedLngs.length / 2)]
+  mockPoints.push({
+    id: 'median_coordinate',
+    coordinate: { latitude: medianLat, longitude: medianLng },
+    type: 'MEDIAN_COORDINATE',
+    metadata: {}
+  })
+
+  // Add participant locations
+  locations.forEach((location, index) => {
+    mockPoints.push({
+      id: `participant_${index}`,
+      coordinate: location,
+      type: 'PARTICIPANT_LOCATION',
+      metadata: {
+        participantId: location.id
+      }
+    })
+  })
+
+  // Add some pairwise midpoints
+  for (let i = 0; i < locations.length && i < 3; i++) {
+    for (let j = i + 1; j < locations.length && j < 3; j++) {
+      const midLat = (locations[i].latitude + locations[j].latitude) / 2
+      const midLng = (locations[i].longitude + locations[j].longitude) / 2
+      mockPoints.push({
+        id: `pairwise_${i}_${j}`,
+        coordinate: { latitude: midLat, longitude: midLng },
+        type: 'PAIRWISE_MIDPOINT',
+        metadata: {
+          pairIds: [locations[i].id, locations[j].id]
+        }
+      })
+    }
+  }
+
+  // Add some mock coarse grid points around the center
+  const gridOffset = 0.01 // ~1km
+  for (let i = -1; i <= 1; i++) {
+    for (let j = -1; j <= 1; j++) {
+      if (i !== 0 || j !== 0) { // Skip center point
+        mockPoints.push({
+          id: `coarse_grid_${i}_${j}`,
+          coordinate: {
+            latitude: centerPoint.latitude + i * gridOffset,
+            longitude: centerPoint.longitude + j * gridOffset
+          },
+          type: 'COARSE_GRID',
+          metadata: {}
+        })
+      }
+    }
+  }
+
+  // Add optimal point (the actual center point)
+  mockPoints.push({
+    id: 'optimal',
+    coordinate: centerPoint,
+    type: 'GEOGRAPHIC_CENTROID', // This would be determined by the algorithm
+    metadata: {}
+  })
+
+  return mockPoints
 }
 
 export default HomePage

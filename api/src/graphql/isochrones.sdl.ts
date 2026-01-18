@@ -19,6 +19,8 @@ export const schema = gql`
     MEDIAN_COORDINATE
     PARTICIPANT_LOCATION
     PAIRWISE_MIDPOINT
+    COARSE_GRID
+    LOCAL_REFINEMENT
   }
 
   type HypothesisPointMetadata {
@@ -39,11 +41,37 @@ export const schema = gql`
     FOOT_WALKING
   }
 
+  enum OptimizationMode {
+    BASELINE
+    COARSE_GRID
+    FULL_REFINEMENT
+  }
+
+  input CoarseGridConfigInput {
+    enabled: Boolean!
+    paddingKm: Float!
+    gridResolution: Int!
+  }
+
+  input LocalRefinementConfigInput {
+    enabled: Boolean!
+    topK: Int!
+    refinementRadiusKm: Float!
+    fineGridResolution: Int!
+  }
+
+  input OptimizationConfigInput {
+    mode: OptimizationMode!
+    coarseGridConfig: CoarseGridConfigInput
+    localRefinementConfig: LocalRefinementConfigInput
+  }
+
   type Mutation {
     calculateMinimaxCenter(
       locations: [LocationInput!]!
       travelMode: TravelMode!
       bufferTimeMinutes: Int!
+      optimizationConfig: OptimizationConfigInput
     ): IsochroneResult! @skipAuth
   }
 `

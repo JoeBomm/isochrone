@@ -16,12 +16,28 @@ export interface GeometryService {
   calculateMedianCoordinate(locations: Location[]): Coordinate
   calculatePairwiseMidpoints(locations: Location[]): Coordinate[]
   validateCoordinateBounds(coordinate: Coordinate): boolean
+  // Multi-phase hypothesis generation methods
+  calculateBoundingBox(locations: Location[], paddingKm?: number): BoundingBox
+  generateCoarseGridPoints(boundingBox: BoundingBox, gridResolution?: number): Coordinate[]
+  generateLocalRefinementPoints(
+    candidates: Array<{ coordinate: Coordinate; maxTravelTime: number }>,
+    topK?: number,
+    refinementRadiusKm?: number,
+    fineGridResolution?: number
+  ): Coordinate[]
 }
 
 export interface Location {
   id: string
   name: string
   coordinate: Coordinate
+}
+
+export interface BoundingBox {
+  north: number
+  south: number
+  east: number
+  west: number
 }
 
 /**
@@ -257,6 +273,263 @@ export class TurfGeometryService implements GeometryService {
     }
 
     return true
+  }
+
+  /**
+   * Calculate bounding box for a set of locations with optional padding
+   * @param locations Array of locations to calculate bounding box from
+   * @param paddingKm Optional padding in kilometers (default: 5km)
+   * @returns BoundingBox containing all locations with padding
+   * @throws Error if no locations provided or calculation fails
+   */
+  calculateBoundingBox(locations: Location[], paddingKm: number = 5): BoundingBox {
+    if (!locations || locations.length === 0) {
+      throw new Error('No locations provided for bounding box calculation')
+    }
+
+    try {
+      // Find min/max coordinates
+      let minLat = locations[0].coordinate.latitude
+      let maxLat = locations[0].coordinate.latitude
+      let minLng = locations[0].coordinate.longitude
+      let maxLng = locations[0].coordinate.longitude
+
+      for (const location of locations) {
+        const { latitude, longitude } = location.coordinate
+        minLat = Math.min(minLat, latitude)
+        maxLat = Math.max(maxLat, latitude)
+        minLng = Math.min(minLng, longitude)
+        maxLng = Math.max(maxLng, longitude)
+      }
+
+      // Convert padding from kilometers to degrees (approximate)
+      // 1 degree latitude ≈ 111 km
+      // 1 degree longitude ≈ 111 km * cos(latitude)
+      const avgLat = (minLat + maxLat) / 2
+      const latPadding = paddingKm / 111
+      const lngPadding = paddingKm / (111 * Math.cos(avgLat * Math.PI / 180))
+
+      const boundingBox = {
+        north: maxLat + latPadding,
+        south: minLat - latPadding,
+        east: maxLng + lngPadding,
+        west: minLng - lngPadding
+      }
+
+      // Validate bounding box coordinates
+      if (boundingBox.south < -90) boundingBox.south = -90
+      if (boundingBox.north > 90) boundingBox.north = 90
+      if (boundingBox.west < -180) boundingBox.west = -180
+      if (boundingBox.east > 180) boundingBox.east = 180
+
+      return boundingBox
+    } catch (error) {
+      throw new Error(`Bounding box calculation failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Generate uniform grid points over a bounding box
+   * @param boundingBox Bounding box to generate grid points within
+   * @param gridResolution Grid resolution (default: 5x5)
+   * @returns Array of coordinates representing grid cell centers
+   * @throws Error if invalid bounding box or calculation fails
+   */
+  generateCoarseGridPoints(boundingBox: BoundingBox, gridResolution: number = 5): Coordinate[] {
+    if (!boundingBox) {
+      throw new Error('No bounding box provided for grid generation')
+    }
+
+    if (gridResolution < 1 || gridResolution > 20) {
+      throw new Error(`Invalid grid resolution: ${gridResolution}. Must be between 1 and 20`)
+    }
+
+    try {
+      const gridPoints: Coordinate[] = []
+
+      // Calculate step sizes
+      const latStep = (boundingBox.north - boundingBox.south) / gridResolution
+      const lngStep = (boundingBox.east - boundingBox.west) / gridResolution
+
+      // Generate grid points at cell centers
+      for (let i = 0; i < gridResolution; i++) {
+        for (let j = 0; j < gridResolution; j++) {
+          // Calculate center of each grid cell
+          const latitude = boundingBox.south + (i + 0.5) * latStep
+          const longitude = boundingBox.west + (j + 0.5) * lngStep
+
+          const gridPoint = { latitude, longitude }
+
+          // Validate each grid point
+          if (!this.validateCoordinateBounds(gridPoint)) {
+            throw new Error(`Generated invalid grid point: ${latitude}, ${longitude}`)
+          }
+
+          gridPoints.push(gridPoint)
+        }
+      }
+
+      return gridPoints
+    } catch (error) {
+      throw new Error(`Coarse grid generation failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Generate local refinement points around top-K candidates
+   * @param candidates Array of candidate points with their maximum travel times
+   * @param topK Number of top candidates to refine around (default: 3)
+   * @param refinementRadiusKm Radius in kilometers for local refinement (default: 2km)
+   * @param fineGridResolution Grid resolution for fine grid (default: 3x3)
+   * @returns Array of coordinates representing local refinement points
+   * @throws Error if invalid parameters or calculation fails
+   */
+  generateLocalRefinementPoints(
+    candidates: Array<{ coordinate: Coordinate; maxTravelTime: number }>,
+    topK: number = 3,
+    refinementRadiusKm: number = 2,
+    fineGridResolution: number = 3
+  ): Coordinate[] {
+    if (!candidates || candidates.length === 0) {
+      throw new Error('No candidates provided for local refinement')
+    }
+
+    if (topK < 1 || topK > 10) {
+      throw new Error(`Invalid topK value: ${topK}. Must be between 1 and 10`)
+    }
+
+    if (refinementRadiusKm < 0.1 || refinementRadiusKm > 10) {
+      throw new Error(`Invalid refinement radius: ${refinementRadiusKm}km. Must be between 0.1 and 10`)
+    }
+
+    if (fineGridResolution < 2 || fineGridResolution > 10) {
+      throw new Error(`Invalid fine grid resolution: ${fineGridResolution}. Must be between 2 and 10`)
+    }
+
+    try {
+      // Sort candidates by maximum travel time (ascending - best first)
+      const sortedCandidates = [...candidates].sort((a, b) => a.maxTravelTime - b.maxTravelTime)
+
+      // Select top-K candidates
+      const topCandidates = sortedCandidates.slice(0, Math.min(topK, sortedCandidates.length))
+
+      const refinementPoints: Coordinate[] = []
+
+      // Generate local bounding boxes and fine grids for each top candidate
+      for (const candidate of topCandidates) {
+        const localBoundingBox = this.calculateLocalBoundingBox(
+          candidate.coordinate,
+          refinementRadiusKm
+        )
+
+        const localGridPoints = this.generateFineGridPoints(
+          localBoundingBox,
+          fineGridResolution
+        )
+
+        refinementPoints.push(...localGridPoints)
+      }
+
+      // Remove duplicates (points that are very close to each other)
+      const uniqueRefinementPoints = this.removeDuplicatePoints(refinementPoints, 0.01) // 10m threshold
+
+      return uniqueRefinementPoints
+    } catch (error) {
+      throw new Error(`Local refinement generation failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Calculate local bounding box around a center point
+   * @param center Center coordinate
+   * @param radiusKm Radius in kilometers
+   * @returns BoundingBox around the center point
+   * @private
+   */
+  private calculateLocalBoundingBox(center: Coordinate, radiusKm: number): BoundingBox {
+    // Convert radius from kilometers to degrees (approximate)
+    const latPadding = radiusKm / 111
+    const lngPadding = radiusKm / (111 * Math.cos(center.latitude * Math.PI / 180))
+
+    const boundingBox = {
+      north: center.latitude + latPadding,
+      south: center.latitude - latPadding,
+      east: center.longitude + lngPadding,
+      west: center.longitude - lngPadding
+    }
+
+    // Validate bounding box coordinates
+    if (boundingBox.south < -90) boundingBox.south = -90
+    if (boundingBox.north > 90) boundingBox.north = 90
+    if (boundingBox.west < -180) boundingBox.west = -180
+    if (boundingBox.east > 180) boundingBox.east = 180
+
+    return boundingBox
+  }
+
+  /**
+   * Generate fine grid points within a local bounding box
+   * @param boundingBox Local bounding box
+   * @param gridResolution Fine grid resolution
+   * @returns Array of coordinates representing fine grid points
+   * @private
+   */
+  private generateFineGridPoints(boundingBox: BoundingBox, gridResolution: number): Coordinate[] {
+    const gridPoints: Coordinate[] = []
+
+    // Calculate step sizes
+    const latStep = (boundingBox.north - boundingBox.south) / gridResolution
+    const lngStep = (boundingBox.east - boundingBox.west) / gridResolution
+
+    // Generate grid points at cell centers
+    for (let i = 0; i < gridResolution; i++) {
+      for (let j = 0; j < gridResolution; j++) {
+        // Calculate center of each grid cell
+        const latitude = boundingBox.south + (i + 0.5) * latStep
+        const longitude = boundingBox.west + (j + 0.5) * lngStep
+
+        const gridPoint = { latitude, longitude }
+
+        // Validate each grid point
+        if (this.validateCoordinateBounds(gridPoint)) {
+          gridPoints.push(gridPoint)
+        }
+      }
+    }
+
+    return gridPoints
+  }
+
+  /**
+   * Remove duplicate points that are within a threshold distance
+   * @param points Array of coordinates
+   * @param thresholdDegrees Threshold distance in degrees
+   * @returns Array of unique coordinates
+   * @private
+   */
+  private removeDuplicatePoints(points: Coordinate[], thresholdDegrees: number): Coordinate[] {
+    const uniquePoints: Coordinate[] = []
+
+    for (const point of points) {
+      let isDuplicate = false
+
+      for (const existingPoint of uniquePoints) {
+        const latDiff = Math.abs(point.latitude - existingPoint.latitude)
+        const lngDiff = Math.abs(point.longitude - existingPoint.longitude)
+
+        // Simple distance check (not geodesic, but sufficient for small distances)
+        if (latDiff < thresholdDegrees && lngDiff < thresholdDegrees) {
+          isDuplicate = true
+          break
+        }
+      }
+
+      if (!isDuplicate) {
+        uniquePoints.push(point)
+      }
+    }
+
+    return uniquePoints
   }
 }
 
