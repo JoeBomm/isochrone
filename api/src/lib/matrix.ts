@@ -1,21 +1,10 @@
 import { logger } from './logger'
 import { geometryService, type Coordinate } from './geometry'
-import type { TravelTimeMatrix, HypothesisPoint } from 'types/graphql'
+import { batchedMatrixService, type BatchedMatrixResult, type PhaseMatrixResult } from './batchedMatrix'
+import type { TravelTimeMatrix, HypothesisPoint, TravelMode } from 'types/graphql'
 
-// Multi-phase matrix evaluation types
-export interface PhaseMatrixResult {
-  phase: 'PHASE_0' | 'PHASE_1' | 'PHASE_2'
-  matrix: TravelTimeMatrix
-  hypothesisPoints: HypothesisPoint[]
-  startIndex: number // Starting index in the combined matrix
-  endIndex: number   // Ending index in the combined matrix
-}
-
-export interface BatchedMatrixResult {
-  combinedMatrix: TravelTimeMatrix
-  phaseResults: PhaseMatrixResult[]
-  totalHypothesisPoints: HypothesisPoint[]
-}
+// Multi-phase matrix evaluation types (now imported from batchedMatrix)
+export type { PhaseMatrixResult, BatchedMatrixResult } from './batchedMatrix'
 
 export interface MatrixService {
   findMinimaxOptimal(matrix: TravelTimeMatrix): {
@@ -28,20 +17,23 @@ export interface MatrixService {
     hypothesisPoints: HypothesisPoint[],
     geographicCentroid: Coordinate
   ): number
-  // Multi-phase matrix evaluation methods
+  // Multi-phase matrix evaluation methods (updated to use batchedMatrixService)
   evaluateBatchedMatrix(
     origins: Coordinate[],
     phase0Points: HypothesisPoint[],
     phase1Points: HypothesisPoint[],
-    travelMode: string,
-    matrixEvaluator: (origins: Coordinate[], destinations: Coordinate[], travelMode: string) => Promise<TravelTimeMatrix>
+    travelMode: TravelMode
   ): Promise<BatchedMatrixResult>
-  evaluatePhase2Matrix(
+  evaluateLocalGridsSeparately(
     origins: Coordinate[],
-    phase2Points: HypothesisPoint[],
-    travelMode: string,
-    matrixEvaluator: (origins: Coordinate[], destinations: Coordinate[], travelMode: string) => Promise<TravelTimeMatrix>
-  ): Promise<PhaseMatrixResult>
+    localGridGroups: HypothesisPoint[][],
+    travelMode: TravelMode
+  ): Promise<PhaseMatrixResult[]>
+  combineLocalGridResults(
+    localGridResults: PhaseMatrixResult[]
+  ): PhaseMatrixResult
+  getApiCallCount(): number
+  resetApiCallCount(): void
   mergeMatrixResults(
     batchedResult: BatchedMatrixResult,
     phase2Result?: PhaseMatrixResult
@@ -266,11 +258,11 @@ export class TravelTimeMatrixService implements MatrixService {
 
   /**
    * Evaluate batched matrix for Phase 0+1 combined (baseline + coarse grid)
+   * Uses the new batchedMatrixService for optimized API call management
    * @param origins Array of participant locations
    * @param phase0Points Phase 0 hypothesis points (baseline)
    * @param phase1Points Phase 1 hypothesis points (coarse grid)
    * @param travelMode Travel mode for matrix calculation
-   * @param matrixEvaluator Function to evaluate travel time matrix
    * @returns BatchedMatrixResult containing combined matrix and phase breakdown
    * @throws Error if matrix evaluation fails or invalid parameters
    */
@@ -278,8 +270,7 @@ export class TravelTimeMatrixService implements MatrixService {
     origins: Coordinate[],
     phase0Points: HypothesisPoint[],
     phase1Points: HypothesisPoint[],
-    travelMode: string,
-    matrixEvaluator: (origins: Coordinate[], destinations: Coordinate[], travelMode: string) => Promise<TravelTimeMatrix>
+    travelMode: TravelMode
   ): Promise<BatchedMatrixResult> {
     if (!origins || origins.length === 0) {
       throw new Error('No origins provided for batched matrix evaluation')
@@ -289,219 +280,106 @@ export class TravelTimeMatrixService implements MatrixService {
       throw new Error('No Phase 0 hypothesis points provided for batched matrix evaluation')
     }
 
-    if (!matrixEvaluator) {
-      throw new Error('No matrix evaluator function provided')
-    }
-
     try {
-      // Combine all hypothesis points for single API call (API call optimization - Requirements 4.2.1)
-      const allHypothesisPoints = [...phase0Points, ...phase1Points]
-      const allDestinations = allHypothesisPoints.map(hp => hp.coordinate)
+      logger.info(`Delegating batched matrix evaluation to batchedMatrixService: ${origins.length} origins, ${phase0Points.length} Phase 0 points, ${phase1Points?.length || 0} Phase 1 points`)
 
-      logger.info(`Evaluating batched matrix: ${origins.length} origins × ${allDestinations.length} destinations (Phase 0: ${phase0Points.length}, Phase 1: ${phase1Points.length})`)
+      // Delegate to the specialized batched matrix service
+      const result = await batchedMatrixService.evaluateCoarseGridBatched(
+        origins,
+        phase0Points,
+        phase1Points || [],
+        travelMode
+      )
 
-      // Single matrix API call for Phase 0+1 (Requirements 7.1 - API call optimization)
-      let combinedMatrix: TravelTimeMatrix
-      try {
-        combinedMatrix = await matrixEvaluator(origins, allDestinations, travelMode)
-        logger.info(`Batched matrix API call successful: ${combinedMatrix.travelTimes.length}×${combinedMatrix.travelTimes[0]?.length || 0}`)
-      } catch (apiError) {
-        logger.error('Batched matrix API call failed:', apiError)
-
-        // Graceful degradation: try Phase 0 only if combined call fails
-        if (phase1Points.length > 0) {
-          logger.warn('Attempting graceful degradation to Phase 0 only due to batched matrix failure')
-          try {
-            const phase0Destinations = phase0Points.map(hp => hp.coordinate)
-            combinedMatrix = await matrixEvaluator(origins, phase0Destinations, travelMode)
-            logger.info(`Phase 0 fallback successful: ${combinedMatrix.travelTimes.length}×${combinedMatrix.travelTimes[0]?.length || 0}`)
-
-            // Return Phase 0 only result
-            const phase0Matrix = combinedMatrix
-            const phaseResults: PhaseMatrixResult[] = [{
-              phase: 'PHASE_0',
-              matrix: phase0Matrix,
-              hypothesisPoints: phase0Points,
-              startIndex: 0,
-              endIndex: phase0Points.length
-            }]
-
-            return {
-              combinedMatrix: phase0Matrix,
-              phaseResults,
-              totalHypothesisPoints: phase0Points
-            }
-          } catch (fallbackError) {
-            logger.error('Phase 0 fallback also failed:', fallbackError)
-            throw new Error(`Coarse grid matrix evaluation failed and Phase 0 fallback failed: ${fallbackError.message}`)
-          }
-        } else {
-          throw new Error(`Matrix API call failed: ${apiError.message}`)
-        }
-      }
-
-      // Validate matrix dimensions
-      if (combinedMatrix.travelTimes.length !== origins.length) {
-        throw new Error(`Matrix dimension mismatch: expected ${origins.length} origin rows, got ${combinedMatrix.travelTimes.length}`)
-      }
-
-      if (combinedMatrix.travelTimes[0]?.length !== allDestinations.length) {
-        throw new Error(`Matrix dimension mismatch: expected ${allDestinations.length} destination columns, got ${combinedMatrix.travelTimes[0]?.length || 0}`)
-      }
-
-      // Validate matrix data integrity
-      for (let i = 0; i < combinedMatrix.travelTimes.length; i++) {
-        if (!Array.isArray(combinedMatrix.travelTimes[i])) {
-          throw new Error(`Invalid matrix row ${i}: not an array`)
-        }
-        if (combinedMatrix.travelTimes[i].length !== allDestinations.length) {
-          throw new Error(`Matrix row ${i} dimension mismatch: expected ${allDestinations.length} columns, got ${combinedMatrix.travelTimes[i].length}`)
-        }
-      }
-
-      // Create phase results with index ranges
-      const phaseResults: PhaseMatrixResult[] = []
-
-      // Phase 0 result
-      const phase0StartIndex = 0
-      const phase0EndIndex = phase0Points.length
-      const phase0Matrix = this.extractPhaseMatrix(combinedMatrix, phase0StartIndex, phase0EndIndex)
-
-      phaseResults.push({
-        phase: 'PHASE_0',
-        matrix: phase0Matrix,
-        hypothesisPoints: phase0Points,
-        startIndex: phase0StartIndex,
-        endIndex: phase0EndIndex
-      })
-
-      // Phase 1 result (if phase1Points exist)
-      if (phase1Points.length > 0) {
-        const phase1StartIndex = phase0Points.length
-        const phase1EndIndex = phase0Points.length + phase1Points.length
-        const phase1Matrix = this.extractPhaseMatrix(combinedMatrix, phase1StartIndex, phase1EndIndex)
-
-        phaseResults.push({
-          phase: 'PHASE_1',
-          matrix: phase1Matrix,
-          hypothesisPoints: phase1Points,
-          startIndex: phase1StartIndex,
-          endIndex: phase1EndIndex
-        })
-      }
-
-      const batchedResult: BatchedMatrixResult = {
-        combinedMatrix,
-        phaseResults,
-        totalHypothesisPoints: allHypothesisPoints
-      }
-
-      logger.info(`Batched matrix evaluation complete: ${phaseResults.length} phases evaluated successfully`)
-      return batchedResult
+      logger.info(`Batched matrix evaluation complete via batchedMatrixService: ${result.phaseResults.length} phases, ${result.apiCallCount} API calls`)
+      return result
 
     } catch (error) {
       logger.error('Batched matrix evaluation failed:', error)
-
-      // Enhanced error handling for multi-phase failures (Requirements 4.2.1, 4.2.2)
-      if (error.message.includes('API call failed')) {
-        throw new Error(`Coarse grid matrix evaluation failed due to API error: ${error.message}`)
-      } else if (error.message.includes('dimension mismatch')) {
-        throw new Error(`Coarse grid matrix evaluation failed due to data integrity error: ${error.message}`)
-      } else if (error.message.includes('fallback failed')) {
-        throw new Error(`Multi-phase matrix evaluation failed: ${error.message}`)
-      } else {
-        throw new Error(`Coarse grid matrix evaluation failed: ${error.message}`)
-      }
+      throw new Error(`Batched matrix evaluation failed: ${error.message}`)
     }
   }
 
   /**
-   * Evaluate Phase 2 matrix separately for local refinement points
+   * Evaluate each local grid using separate Matrix API calls (Phase 2)
+   * Uses the new batchedMatrixService for optimized local grid evaluation
    * @param origins Array of participant locations
-   * @param phase2Points Phase 2 hypothesis points (local refinement)
+   * @param localGridGroups Array of local grid groups, each containing hypothesis points for one local grid
    * @param travelMode Travel mode for matrix calculation
-   * @param matrixEvaluator Function to evaluate travel time matrix
-   * @returns PhaseMatrixResult for Phase 2
-   * @throws Error if matrix evaluation fails or invalid parameters
+   * @returns Array of PhaseMatrixResult, one for each local grid
+   * @throws Error if any local grid evaluation fails
    */
-  async evaluatePhase2Matrix(
+  async evaluateLocalGridsSeparately(
     origins: Coordinate[],
-    phase2Points: HypothesisPoint[],
-    travelMode: string,
-    matrixEvaluator: (origins: Coordinate[], destinations: Coordinate[], travelMode: string) => Promise<TravelTimeMatrix>
-  ): Promise<PhaseMatrixResult> {
+    localGridGroups: HypothesisPoint[][],
+    travelMode: TravelMode
+  ): Promise<PhaseMatrixResult[]> {
     if (!origins || origins.length === 0) {
-      throw new Error('No origins provided for Phase 2 matrix evaluation')
+      throw new Error('No origins provided for local grid evaluation')
     }
 
-    if (!phase2Points || phase2Points.length === 0) {
-      throw new Error('No Phase 2 hypothesis points provided')
-    }
-
-    if (!matrixEvaluator) {
-      throw new Error('No matrix evaluator function provided')
+    if (!localGridGroups || localGridGroups.length === 0) {
+      throw new Error('No local grid groups provided for evaluation')
     }
 
     try {
-      const phase2Destinations = phase2Points.map(hp => hp.coordinate)
+      logger.info(`Delegating local grid evaluation to batchedMatrixService: ${localGridGroups.length} local grids`)
 
-      logger.info(`Evaluating Phase 2 matrix: ${origins.length} origins × ${phase2Destinations.length} destinations`)
+      // Delegate to the specialized batched matrix service
+      const results = await batchedMatrixService.evaluateLocalGridsSeparately(
+        origins,
+        localGridGroups,
+        travelMode
+      )
 
-      // Separate matrix API call for Phase 2 (Requirements 4.2.2 - separate evaluation)
-      let phase2Matrix: TravelTimeMatrix
-      try {
-        phase2Matrix = await matrixEvaluator(origins, phase2Destinations, travelMode)
-        logger.info(`Phase 2 matrix API call successful: ${phase2Matrix.travelTimes.length}×${phase2Matrix.travelTimes[0]?.length || 0}`)
-      } catch (apiError) {
-        logger.error('Phase 2 matrix API call failed:', apiError)
-
-        // For Phase 2 failures, we can gracefully degrade by not including Phase 2 results
-        // The caller should handle this by checking if Phase 2 result is undefined
-        throw new Error(`Local refinement matrix API call failed: ${apiError.message}`)
-      }
-
-      // Validate matrix dimensions
-      if (phase2Matrix.travelTimes.length !== origins.length) {
-        throw new Error(`Phase 2 matrix dimension mismatch: expected ${origins.length} origin rows, got ${phase2Matrix.travelTimes.length}`)
-      }
-
-      if (phase2Matrix.travelTimes[0]?.length !== phase2Destinations.length) {
-        throw new Error(`Phase 2 matrix dimension mismatch: expected ${phase2Destinations.length} destination columns, got ${phase2Matrix.travelTimes[0]?.length || 0}`)
-      }
-
-      // Validate matrix data integrity
-      for (let i = 0; i < phase2Matrix.travelTimes.length; i++) {
-        if (!Array.isArray(phase2Matrix.travelTimes[i])) {
-          throw new Error(`Invalid Phase 2 matrix row ${i}: not an array`)
-        }
-        if (phase2Matrix.travelTimes[i].length !== phase2Destinations.length) {
-          throw new Error(`Phase 2 matrix row ${i} dimension mismatch: expected ${phase2Destinations.length} columns, got ${phase2Matrix.travelTimes[i].length}`)
-        }
-      }
-
-      const phase2Result: PhaseMatrixResult = {
-        phase: 'PHASE_2',
-        matrix: phase2Matrix,
-        hypothesisPoints: phase2Points,
-        startIndex: 0, // Phase 2 has its own indexing
-        endIndex: phase2Points.length
-      }
-
-      logger.info('Phase 2 matrix evaluation complete successfully')
-      return phase2Result
+      logger.info(`Local grid evaluation complete via batchedMatrixService: ${results.length} grids evaluated`)
+      return results
 
     } catch (error) {
-      logger.error('Phase 2 matrix evaluation failed:', error)
-
-      // Enhanced error handling for Phase 2 failures (Requirements 4.2.2)
-      if (error.message.includes('API call failed')) {
-        throw new Error(`Local refinement matrix evaluation failed due to API error: ${error.message}`)
-      } else if (error.message.includes('dimension mismatch')) {
-        throw new Error(`Local refinement matrix evaluation failed due to data integrity error: ${error.message}`)
-      } else {
-        throw new Error(`Local refinement matrix evaluation failed: ${error.message}`)
-      }
+      logger.error('Local grid evaluation failed:', error)
+      throw new Error(`Local grid evaluation failed: ${error.message}`)
     }
+  }
+
+  /**
+   * Combine local grid results into a single Phase 2 matrix result
+   * Uses the new batchedMatrixService for result combination
+   * @param localGridResults Array of individual local grid results
+   * @returns Combined PhaseMatrixResult for all local grids
+   */
+  combineLocalGridResults(localGridResults: PhaseMatrixResult[]): PhaseMatrixResult {
+    if (!localGridResults || localGridResults.length === 0) {
+      throw new Error('No local grid results provided for combination')
+    }
+
+    try {
+      logger.info(`Delegating local grid combination to batchedMatrixService: ${localGridResults.length} results`)
+
+      // Delegate to the specialized batched matrix service
+      const combinedResult = batchedMatrixService.combineLocalGridResults(localGridResults)
+
+      logger.info(`Local grid combination complete via batchedMatrixService: ${combinedResult.hypothesisPoints.length} total points`)
+      return combinedResult
+
+    } catch (error) {
+      logger.error('Local grid combination failed:', error)
+      throw new Error(`Local grid combination failed: ${error.message}`)
+    }
+  }
+
+  /**
+   * Get current API call count for cost monitoring
+   * @returns Number of Matrix API calls made
+   */
+  getApiCallCount(): number {
+    return batchedMatrixService.getApiCallCount()
+  }
+
+  /**
+   * Reset API call counter
+   */
+  resetApiCallCount(): void {
+    batchedMatrixService.resetApiCallCount()
   }
 
   /**

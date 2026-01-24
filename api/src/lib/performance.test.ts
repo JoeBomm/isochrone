@@ -131,7 +131,7 @@ describe('Multi-Phase Optimization Performance Tests', () => {
             latitude: 40.7128 + (i % 10) * 0.001,
             longitude: -74.0060 + Math.floor(i / 10) * 0.001
           },
-          type: 'COARSE_GRID',
+          type: 'COARSE_GRID_CELL',
           metadata: null
         }))
 
@@ -185,7 +185,7 @@ describe('Multi-Phase Optimization Performance Tests', () => {
           latitude: 40.7128 + i * 0.0001,
           longitude: -74.0060 + i * 0.0001
         },
-        type: 'COARSE_GRID',
+        type: 'COARSE_GRID_CELL',
         metadata: null
       }))
 

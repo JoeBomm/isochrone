@@ -452,8 +452,8 @@ describe('End-to-End Integration Tests - Complete User Workflows', () => {
       expect(pointTypes.has('MEDIAN_COORDINATE')).toBe(true)
       expect(pointTypes.has('PARTICIPANT_LOCATION')).toBe(true)
       expect(pointTypes.has('PAIRWISE_MIDPOINT')).toBe(true)
-      expect(pointTypes.has('COARSE_GRID')).toBe(true)
-      expect(pointTypes.has('LOCAL_REFINEMENT')).toBe(true)
+      expect(pointTypes.has('COARSE_GRID_CELL')).toBe(true)
+      expect(pointTypes.has('LOCAL_REFINEMENT_CELL')).toBe(true)
 
       // Validate optimal point is marked
       expect(result.optimizationMetadata?.optimalHypothesisPoint).toBeDefined()

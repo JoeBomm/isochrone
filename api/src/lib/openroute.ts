@@ -1,5 +1,11 @@
-import { logger } from './logger'
 import { GeoJSON } from 'geojson'
+import type {
+  TravelMode,
+  Location,
+  HypothesisPoint,
+  TravelTimeMatrix,
+} from 'types/graphql'
+
 import {
   createApiKeyError,
   createRateLimitError,
@@ -8,9 +14,9 @@ import {
   createInvalidCoordinatesError,
   createMatrixCalculationError,
   AppError,
-  ErrorCode
+  ErrorCode,
 } from './errors'
-import type { TravelMode, Location, HypothesisPoint, TravelTimeMatrix } from 'types/graphql'
+import { logger } from './logger'
 
 export interface Coordinate {
   latitude: number
@@ -23,11 +29,13 @@ export interface IsochroneParams {
 }
 
 // Convert GraphQL enum values to OpenRoute API values
-function convertTravelMode(mode: 'DRIVING_CAR' | 'CYCLING_REGULAR' | 'FOOT_WALKING'): 'driving-car' | 'cycling-regular' | 'foot-walking' {
+function convertTravelMode(
+  mode: 'DRIVING_CAR' | 'CYCLING_REGULAR' | 'FOOT_WALKING'
+): 'driving-car' | 'cycling-regular' | 'foot-walking' {
   const modeMap = {
-    'DRIVING_CAR': 'driving-car' as const,
-    'CYCLING_REGULAR': 'cycling-regular' as const,
-    'FOOT_WALKING': 'foot-walking' as const
+    DRIVING_CAR: 'driving-car' as const,
+    CYCLING_REGULAR: 'cycling-regular' as const,
+    FOOT_WALKING: 'foot-walking' as const,
   }
   return modeMap[mode]
 }
@@ -38,7 +46,10 @@ export interface OpenRouteClient {
     destinations: Coordinate[],
     travelMode: TravelMode
   ): Promise<TravelTimeMatrix>
-  calculateIsochrone(coordinate: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon>
+  calculateIsochrone(
+    coordinate: Coordinate,
+    params: IsochroneParams
+  ): Promise<GeoJSON.Polygon>
   geocodeAddress(address: string): Promise<Coordinate>
 }
 
@@ -49,19 +60,68 @@ class OpenRouteServiceClient implements OpenRouteClient {
   private matrixTimeout = 45000 // 45 seconds for matrix calculations
   private geocodingTimeout = 10000 // 10 seconds for geocoding
 
+  // API usage tracking for monitoring
+  private apiCallCount = 0
+  private lastResetTime = Date.now()
+  private readonly USAGE_RESET_INTERVAL = 60 * 60 * 1000 // 1 hour
+  private readonly HIGH_USAGE_THRESHOLD = 100 // calls per hour
+
   constructor() {
     this.apiKey = process.env.OPENROUTE_SERVICE_API_KEY
     if (!this.apiKey) {
       throw new AppError({
         code: ErrorCode.MISSING_API_KEY,
         message: 'OPENROUTE_SERVICE_API_KEY environment variable is required',
-        userMessage: 'Configuration error: Missing API key for mapping service. Please configure your API key.'
+        userMessage:
+          'Configuration error: Missing API key for mapping service. Please configure your API key.',
       })
     }
 
     // Validate API key format (basic check)
     if (!this.isValidApiKeyFormat(this.apiKey)) {
       throw createApiKeyError('Invalid API key format')
+    }
+  }
+
+  /**
+   * Track API usage and warn about high usage
+   * @private
+   */
+  private trackApiUsage(): void {
+    const now = Date.now()
+
+    // Reset counter if an hour has passed
+    if (now - this.lastResetTime > this.USAGE_RESET_INTERVAL) {
+      this.apiCallCount = 0
+      this.lastResetTime = now
+    }
+
+    this.apiCallCount++
+
+    // Warn about high usage
+    if (this.apiCallCount >= this.HIGH_USAGE_THRESHOLD) {
+      logger.warn(
+        `High API usage detected: ${this.apiCallCount} calls in the last hour`
+      )
+    }
+  }
+
+  /**
+   * Get current API usage statistics
+   * @returns Object with usage information
+   */
+  getApiUsageStats(): {
+    callCount: number
+    timeWindow: string
+    isHighUsage: boolean
+  } {
+    const now = Date.now()
+    const timeWindow = `${Math.floor((now - this.lastResetTime) / (60 * 1000))} minutes`
+
+    return {
+      callCount: this.apiCallCount,
+      timeWindow,
+      isHighUsage: this.apiCallCount >= this.HIGH_USAGE_THRESHOLD,
     }
   }
 
@@ -83,54 +143,75 @@ class OpenRouteServiceClient implements OpenRouteClient {
     destinations: Coordinate[],
     travelMode: TravelMode
   ): Promise<TravelTimeMatrix> {
+    // Track API usage
+    this.trackApiUsage()
+
     const apiTravelMode = convertTravelMode(travelMode)
     const url = `${this.baseUrl}/v2/matrix/${apiTravelMode}`
 
     // Convert coordinates to OpenRouteService format [lng, lat]
-    const originCoords = origins.map(coord => [coord.longitude, coord.latitude])
-    const destinationCoords = destinations.map(coord => [coord.longitude, coord.latitude])
+    const originCoords = origins.map((coord) => [
+      coord.longitude,
+      coord.latitude,
+    ])
+    const destinationCoords = destinations.map((coord) => [
+      coord.longitude,
+      coord.latitude,
+    ])
 
     const requestBody = {
       locations: [...originCoords, ...destinationCoords],
       sources: Array.from({ length: origins.length }, (_, i) => i), // Indices for origins
-      destinations: Array.from({ length: destinations.length }, (_, i) => origins.length + i), // Indices for destinations
+      destinations: Array.from(
+        { length: destinations.length },
+        (_, i) => origins.length + i
+      ), // Indices for destinations
       metrics: ['duration'], // We only need travel time
-      units: 'm' // Duration in seconds
+      units: 'm', // Duration in seconds
     }
 
     try {
-      logger.info(`Calculating travel time matrix: ${origins.length} origins to ${destinations.length} destinations`)
+      logger.info(
+        `Calculating travel time matrix: ${origins.length} origins to ${destinations.length} destinations`
+      )
 
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          Accept: 'application/json',
         },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(this.matrixTimeout)
+        signal: AbortSignal.timeout(this.matrixTimeout),
       })
 
       if (!response.ok) {
         const errorText = await response.text()
-        logger.error(`OpenRouteService matrix API error: ${response.status} - ${errorText}`)
+        logger.error(
+          `OpenRouteService matrix API error: ${response.status} - ${errorText}`
+        )
 
         if (response.status === 401) {
           throw createApiKeyError('Authentication failed with OpenRouteService')
         } else if (response.status === 429) {
           throw createRateLimitError()
         } else if (response.status === 403) {
-          throw createApiKeyError('API key does not have permission for matrix service')
+          throw createApiKeyError(
+            'API key does not have permission for matrix service'
+          )
         } else if (response.status >= 500) {
           throw new AppError({
             code: ErrorCode.API_UNAVAILABLE,
             message: `OpenRouteService server error: ${response.status}`,
-            userMessage: 'Mapping service is temporarily unavailable. Please try again later.',
-            details: { status: response.status, errorText }
+            userMessage:
+              'Mapping service is temporarily unavailable. Please try again later.',
+            details: { status: response.status, errorText },
           })
         } else {
-          throw createMatrixCalculationError(`API error: ${response.status} - ${errorText}`)
+          throw createMatrixCalculationError(
+            `API error: ${response.status} - ${errorText}`
+          )
         }
       }
 
@@ -138,13 +219,17 @@ class OpenRouteServiceClient implements OpenRouteClient {
 
       // Validate response structure
       if (!data.durations || !Array.isArray(data.durations)) {
-        throw createMatrixCalculationError('Invalid matrix response: missing durations array')
+        throw createMatrixCalculationError(
+          'Invalid matrix response: missing durations array'
+        )
       }
 
       // Convert durations from seconds to minutes and validate dimensions
       const travelTimes: number[][] = data.durations.map((row: number[]) => {
         if (!Array.isArray(row) || row.length !== destinations.length) {
-          throw createMatrixCalculationError(`Invalid matrix dimensions: expected ${destinations.length} destinations per row`)
+          throw createMatrixCalculationError(
+            `Invalid matrix dimensions: expected ${destinations.length} destinations per row`
+          )
         }
         return row.map((duration: number) => {
           // Convert seconds to minutes, handle null/unreachable routes
@@ -156,7 +241,9 @@ class OpenRouteServiceClient implements OpenRouteClient {
       })
 
       if (travelTimes.length !== origins.length) {
-        throw createMatrixCalculationError(`Invalid matrix dimensions: expected ${origins.length} origin rows`)
+        throw createMatrixCalculationError(
+          `Invalid matrix dimensions: expected ${origins.length} origin rows`
+        )
       }
 
       // Convert coordinates back to Location and HypothesisPoint objects
@@ -164,21 +251,23 @@ class OpenRouteServiceClient implements OpenRouteClient {
         id: `origin_${index}`,
         name: `Origin ${index + 1}`,
         latitude: coord.latitude,
-        longitude: coord.longitude
+        longitude: coord.longitude,
       }))
 
-      const hypothesisDestinations: HypothesisPoint[] = destinations.map((coord, index) => ({
-        id: `destination_${index}`,
-        coordinate: coord,
-        type: 'PARTICIPANT_LOCATION' as const, // Default type for matrix calculations
-        metadata: null
-      }))
+      const hypothesisDestinations: HypothesisPoint[] = destinations.map(
+        (coord, index) => ({
+          id: `destination_${index}`,
+          coordinate: coord,
+          type: 'PARTICIPANT_LOCATION' as const, // Default type for matrix calculations
+          metadata: null,
+        })
+      )
 
       return {
         origins: locationOrigins,
         destinations: hypothesisDestinations,
         travelTimes,
-        travelMode
+        travelMode,
       }
     } catch (error) {
       if (error instanceof AppError) {
@@ -195,17 +284,27 @@ class OpenRouteServiceClient implements OpenRouteClient {
         throw new AppError({
           code: ErrorCode.NETWORK_ERROR,
           message: 'Network error during matrix calculation',
-          userMessage: 'Network connection failed. Please check your internet connection and try again.',
-          originalError: error
+          userMessage:
+            'Network connection failed. Please check your internet connection and try again.',
+          originalError: error,
         })
       }
 
       logger.error('Unexpected error calculating travel time matrix:', error)
-      throw createMatrixCalculationError('Unexpected error during matrix calculation', error)
+      throw createMatrixCalculationError(
+        'Unexpected error during matrix calculation',
+        error
+      )
     }
   }
 
-  async calculateIsochrone(coordinate: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon> {
+  async calculateIsochrone(
+    coordinate: Coordinate,
+    params: IsochroneParams
+  ): Promise<GeoJSON.Polygon> {
+    // Track API usage
+    this.trackApiUsage()
+
     const apiTravelMode = convertTravelMode(params.travelMode)
     const url = `${this.baseUrl}/v2/isochrones/${apiTravelMode}`
 
@@ -215,46 +314,54 @@ class OpenRouteServiceClient implements OpenRouteClient {
       range_type: 'time',
       attributes: ['area', 'reachfactor'],
       smoothing: 0.9,
-      area_units: 'km'
+      area_units: 'km',
     }
 
     try {
-      logger.info(`Calculating isochrone for ${coordinate.latitude}, ${coordinate.longitude}`)
+      logger.info(
+        `Calculating isochrone for ${coordinate.latitude}, ${coordinate.longitude}`
+      )
 
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'Accept': 'application/geo+json'
+          Accept: 'application/geo+json',
         },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(this.isochroneTimeout)
+        signal: AbortSignal.timeout(this.isochroneTimeout),
       })
 
       if (!response.ok) {
         const errorText = await response.text()
-        logger.error(`OpenRouteService isochrone API error: ${response.status} - ${errorText}`)
+        logger.error(
+          `OpenRouteService isochrone API error: ${response.status} - ${errorText}`
+        )
 
         if (response.status === 401) {
           throw createApiKeyError('Authentication failed with OpenRouteService')
         } else if (response.status === 429) {
           throw createRateLimitError()
         } else if (response.status === 403) {
-          throw createApiKeyError('API key does not have permission for isochrone service')
+          throw createApiKeyError(
+            'API key does not have permission for isochrone service'
+          )
         } else if (response.status >= 500) {
           throw new AppError({
             code: ErrorCode.API_UNAVAILABLE,
             message: `OpenRouteService server error: ${response.status}`,
-            userMessage: 'Mapping service is temporarily unavailable. Please try again later.',
-            details: { status: response.status, errorText }
+            userMessage:
+              'Mapping service is temporarily unavailable. Please try again later.',
+            details: { status: response.status, errorText },
           })
         } else {
           throw new AppError({
             code: ErrorCode.ISOCHRONE_CALCULATION_FAILED,
             message: `OpenRouteService API error: ${response.status} - ${errorText}`,
-            userMessage: 'Failed to calculate travel areas. Please check your locations and try again.',
-            details: { status: response.status, errorText }
+            userMessage:
+              'Failed to calculate travel areas. Please check your locations and try again.',
+            details: { status: response.status, errorText },
           })
         }
       }
@@ -266,8 +373,9 @@ class OpenRouteServiceClient implements OpenRouteClient {
         throw new AppError({
           code: ErrorCode.ISOCHRONE_CALCULATION_FAILED,
           message: 'No isochrone data returned from OpenRouteService',
-          userMessage: 'Unable to calculate travel area for this location. Please try a different location or travel time.',
-          details: { coordinate, params }
+          userMessage:
+            'Unable to calculate travel area for this location. Please try a different location or travel time.',
+          details: { coordinate, params },
         })
       }
 
@@ -277,7 +385,7 @@ class OpenRouteServiceClient implements OpenRouteClient {
           code: ErrorCode.INVALID_POLYGON_DATA,
           message: 'Invalid polygon data returned from OpenRouteService',
           userMessage: 'Received invalid travel area data. Please try again.',
-          details: { polygonType: polygon.type }
+          details: { polygonType: polygon.type },
         })
       }
 
@@ -297,8 +405,9 @@ class OpenRouteServiceClient implements OpenRouteClient {
         throw new AppError({
           code: ErrorCode.NETWORK_ERROR,
           message: 'Network error during isochrone calculation',
-          userMessage: 'Network connection failed. Please check your internet connection and try again.',
-          originalError: error
+          userMessage:
+            'Network connection failed. Please check your internet connection and try again.',
+          originalError: error,
         })
       }
 
@@ -307,18 +416,21 @@ class OpenRouteServiceClient implements OpenRouteClient {
         code: ErrorCode.ISOCHRONE_CALCULATION_FAILED,
         message: 'Unexpected error during isochrone calculation',
         userMessage: 'Failed to calculate travel area. Please try again.',
-        originalError: error
+        originalError: error,
       })
     }
   }
 
   async geocodeAddress(address: string): Promise<Coordinate> {
+    // Track API usage
+    this.trackApiUsage()
+
     const url = `${this.baseUrl}/geocode/search`
     const params = new URLSearchParams({
       api_key: this.apiKey,
       text: address,
       size: '1', // Only return the best match
-      layers: 'address,venue,street' // Focus on specific location types
+      layers: 'address,venue,street', // Focus on specific location types
     })
 
     try {
@@ -327,30 +439,38 @@ class OpenRouteServiceClient implements OpenRouteClient {
       const response = await fetch(`${url}?${params}`, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json'
+          Accept: 'application/json',
         },
-        signal: AbortSignal.timeout(this.geocodingTimeout) // 10 second timeout for geocoding
+        signal: AbortSignal.timeout(this.geocodingTimeout), // 10 second timeout for geocoding
       })
 
       if (!response.ok) {
         const errorText = await response.text()
-        logger.error(`OpenRouteService geocoding API error: ${response.status} - ${errorText}`)
+        logger.error(
+          `OpenRouteService geocoding API error: ${response.status} - ${errorText}`
+        )
 
         if (response.status === 401) {
           throw createApiKeyError('Authentication failed with OpenRouteService')
         } else if (response.status === 429) {
           throw createRateLimitError()
         } else if (response.status === 403) {
-          throw createApiKeyError('API key does not have permission for geocoding service')
+          throw createApiKeyError(
+            'API key does not have permission for geocoding service'
+          )
         } else if (response.status >= 500) {
           throw new AppError({
             code: ErrorCode.API_UNAVAILABLE,
             message: `OpenRouteService server error: ${response.status}`,
-            userMessage: 'Geocoding service is temporarily unavailable. Please try again later.',
-            details: { status: response.status, errorText }
+            userMessage:
+              'Geocoding service is temporarily unavailable. Please try again later.',
+            details: { status: response.status, errorText },
           })
         } else {
-          throw createGeocodingError(address, new Error(`API error: ${response.status}`))
+          throw createGeocodingError(
+            address,
+            new Error(`API error: ${response.status}`)
+          )
         }
       }
 
@@ -364,13 +484,18 @@ class OpenRouteServiceClient implements OpenRouteClient {
       const [longitude, latitude] = feature.geometry.coordinates
 
       // Validate coordinate ranges
-      if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      if (
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
         throw createInvalidCoordinatesError({ latitude, longitude })
       }
 
       return {
         latitude,
-        longitude
+        longitude,
       }
     } catch (error) {
       if (error instanceof AppError) {
@@ -387,8 +512,9 @@ class OpenRouteServiceClient implements OpenRouteClient {
         throw new AppError({
           code: ErrorCode.NETWORK_ERROR,
           message: 'Network error during geocoding',
-          userMessage: 'Network connection failed. Please check your internet connection and try again.',
-          originalError: error
+          userMessage:
+            'Network connection failed. Please check your internet connection and try again.',
+          originalError: error,
         })
       }
 

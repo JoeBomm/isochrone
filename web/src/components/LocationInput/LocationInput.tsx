@@ -1,9 +1,39 @@
 import { useState } from 'react'
+
 import { useLazyQuery } from '@apollo/client'
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Upload as UploadIcon,
+  LocationOn as LocationOnIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+} from '@mui/icons-material'
+import {
+  Box,
+  TextField,
+  Button,
+  Typography,
+  Alert,
+  AlertTitle,
+  Card,
+  CardContent,
+  IconButton,
+  CircularProgress,
+  Collapse,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  Divider,
+  useTheme,
+  useMediaQuery,
+} from '@mui/material'
 
 import { parseCoordinates, formatCoordinate } from 'src/lib/coordinateUtils'
 import { GEOCODE_ADDRESS } from 'src/lib/graphql'
-import LoadingSpinner from 'src/components/LoadingSpinner/LoadingSpinner'
 
 export interface Location {
   id: string
@@ -16,6 +46,7 @@ export interface Location {
 interface LocationInputProps {
   onLocationAdd: (location: Location) => void
   onLocationRemove: (locationId: string) => void
+  onBulkImport?: (locations: Location[]) => void
   locations: Location[]
   isLoading?: boolean
 }
@@ -39,14 +70,26 @@ const MARKER_COLORS = [
 const LocationInput = ({
   onLocationAdd,
   onLocationRemove,
+  onBulkImport,
   locations,
-  isLoading = false
+  isLoading = false,
 }: LocationInputProps) => {
   const [inputValue, setInputValue] = useState('')
   const [inputError, setInputError] = useState('')
   const [isGeocoding, setIsGeocoding] = useState(false)
+  const [showBulkInput, setShowBulkInput] = useState(false)
+  const [bulkInputValue, setBulkInputValue] = useState('')
+  const [bulkInputError, setBulkInputError] = useState('')
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false)
+  const [bulkResults, setBulkResults] = useState<{
+    successful: Location[]
+    failed: Array<{ input: string; error: string }>
+  }>({ successful: [], failed: [] })
 
-  // GraphQL query for geocoding
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  // GraphQL query for geocoding (individual input)
   const [geocodeAddress] = useLazyQuery(GEOCODE_ADDRESS, {
     onCompleted: (data) => {
       if (data?.geocodeAddress) {
@@ -55,7 +98,7 @@ const LocationInput = ({
           name: inputValue.trim(),
           latitude: data.geocodeAddress.latitude,
           longitude: data.geocodeAddress.longitude,
-          color: MARKER_COLORS[locations.length % MARKER_COLORS.length]
+          color: MARKER_COLORS[locations.length % MARKER_COLORS.length],
         }
         onLocationAdd(newLocation)
         setInputValue('')
@@ -75,15 +118,131 @@ const LocationInput = ({
       } else if (error.message.includes('API key')) {
         errorMessage = 'Service configuration error. Please contact support.'
       } else if (error.message.includes('timeout')) {
-        errorMessage = 'Request timed out. Please check your connection and try again.'
+        errorMessage =
+          'Request timed out. Please check your connection and try again.'
       } else {
         errorMessage = `Unable to find "${inputValue.trim()}". Please try a different address or enter coordinates directly.`
       }
 
       setInputError(errorMessage)
       setIsGeocoding(false)
-    }
+    },
   })
+
+  // Separate geocoding query for bulk processing (no callbacks to avoid duplicates)
+  // This prevents the onCompleted callback from automatically adding locations
+  // when we're doing bulk processing, which would create duplicates
+  const [geocodeAddressBulk] = useLazyQuery(GEOCODE_ADDRESS)
+
+  // Bulk processing functions
+  const processBulkInput = async (inputText: string): Promise<Location[]> => {
+    const lines = inputText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+    if (lines.length === 0) {
+      throw new Error('No valid input lines found')
+    }
+
+    const results: Location[] = []
+    const errors: Array<{ input: string; error: string }> = []
+
+    for (const line of lines) {
+      try {
+        // Check if input is coordinates
+        const coordinates = parseCoordinates(line)
+
+        if (coordinates) {
+          // Direct coordinate input
+          const newLocation: Location = {
+            id: `${Date.now()}-${Math.random()}`,
+            name: formatCoordinate(coordinates),
+            latitude: coordinates.latitude,
+            longitude: coordinates.longitude,
+            color:
+              MARKER_COLORS[
+                (results.length + locations.length) % MARKER_COLORS.length
+              ],
+          }
+          results.push(newLocation)
+        } else {
+          // Address geocoding for bulk processing - use separate query without callbacks
+          try {
+            const geocodeResult = await geocodeAddressBulk({
+              variables: { address: line },
+            })
+
+            if (geocodeResult.data?.geocodeAddress) {
+              const newLocation: Location = {
+                id: `${Date.now()}-${Math.random()}`,
+                name: line,
+                latitude: geocodeResult.data.geocodeAddress.latitude,
+                longitude: geocodeResult.data.geocodeAddress.longitude,
+                color:
+                  MARKER_COLORS[
+                    (results.length + locations.length) % MARKER_COLORS.length
+                  ],
+              }
+              results.push(newLocation)
+            } else {
+              errors.push({ input: line, error: 'No geocoding result found' })
+            }
+          } catch (geocodeError) {
+            const errorMessage =
+              geocodeError instanceof Error
+                ? geocodeError.message
+                : 'Failed to geocode address'
+            errors.push({ input: line, error: errorMessage })
+          }
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Failed to process location'
+        errors.push({ input: line, error: errorMessage })
+      }
+    }
+
+    setBulkResults({ successful: results, failed: errors })
+    return results
+  }
+
+  const handleBulkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bulkInputValue.trim() || isBulkProcessing) return
+
+    setBulkInputError('')
+    setIsBulkProcessing(true)
+    setBulkResults({ successful: [], failed: [] })
+
+    try {
+      const processedLocations = await processBulkInput(bulkInputValue)
+
+      if (processedLocations.length > 0 && onBulkImport) {
+        onBulkImport(processedLocations)
+        setBulkInputValue('')
+        setShowBulkInput(false)
+      } else if (processedLocations.length === 0) {
+        setBulkInputError(
+          'No valid locations could be processed from the input'
+        )
+      }
+    } catch (error) {
+      console.error('Bulk processing error:', error)
+      setBulkInputError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to process bulk input. Please check the format and try again.'
+      )
+    } finally {
+      setIsBulkProcessing(false)
+    }
+  }
+
+  const handleBulkInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setBulkInputValue(e.target.value)
+    if (bulkInputError) setBulkInputError('')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -102,7 +261,7 @@ const LocationInput = ({
           name: formatCoordinate(coordinates),
           latitude: coordinates.latitude,
           longitude: coordinates.longitude,
-          color: MARKER_COLORS[locations.length % MARKER_COLORS.length]
+          color: MARKER_COLORS[locations.length % MARKER_COLORS.length],
         }
         onLocationAdd(newLocation)
         setInputValue('')
@@ -110,7 +269,7 @@ const LocationInput = ({
         // Address geocoding using GraphQL
         setIsGeocoding(true)
         await geocodeAddress({
-          variables: { address: inputValue.trim() }
+          variables: { address: inputValue.trim() },
         })
       }
     } catch (error) {
@@ -126,105 +285,264 @@ const LocationInput = ({
   }
 
   return (
-    <div className="space-y-4">
-      {/* Input Form */}
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <div>
-          <label htmlFor="location-input" className="block text-sm font-medium text-gray-700 mb-1">
+    <Box sx={{ width: '100%', maxWidth: 600, mx: 'auto' }}>
+      {/* Individual Location Input */}
+      <Card elevation={2} sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
+            <LocationOnIcon color="primary" />
             Add Location
-          </label>
-          <input
-            id="location-input"
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            placeholder="Enter address or coordinates (lat,lng)"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            disabled={isLoading || isGeocoding}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Examples: "123 Main St, City" or "40.7128,-74.0060"
-          </p>
-        </div>
+          </Typography>
 
-        {inputError && (
-          <div className="text-sm text-red-600 bg-red-50 p-3 rounded border border-red-200">
-            <div className="flex items-start">
-              <svg className="w-4 h-4 text-red-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z" />
-              </svg>
-              <div>
-                <h4 className="font-medium">Location Error</h4>
-                <p className="mt-1">{inputError}</p>
-              </div>
-            </div>
-          </div>
-        )}
+          <Box component="form" onSubmit={handleSubmit} sx={{ mb: 2 }}>
+            <TextField
+              fullWidth
+              label="Enter address or coordinates"
+              placeholder="123 Main St, City or 40.7128,-74.0060"
+              value={inputValue}
+              onChange={handleInputChange}
+              disabled={isLoading || isGeocoding}
+              error={!!inputError}
+              helperText={
+                inputError ||
+                'Examples: "123 Main St, City" or "40.7128,-74.0060"'
+              }
+              sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: isGeocoding ? (
+                  <CircularProgress size={20} />
+                ) : null,
+              }}
+            />
 
-        <button
-          type="submit"
-          disabled={!inputValue.trim() || isLoading || isGeocoding}
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-        >
-          {isGeocoding ? (
-            <>
-              <LoadingSpinner size="sm" color="white" />
-              <span className="ml-2">Finding Location...</span>
-            </>
-          ) : (
-            'Add Location'
-          )}
-        </button>
-      </form>
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth={isMobile}
+              disabled={!inputValue.trim() || isLoading || isGeocoding}
+              startIcon={
+                isGeocoding ? <CircularProgress size={16} /> : <AddIcon />
+              }
+              sx={{ minWidth: isMobile ? 'auto' : 140 }}
+            >
+              {isGeocoding ? 'Finding...' : 'Add Location'}
+            </Button>
+          </Box>
+
+          {/* Bulk Input Toggle */}
+          <Box sx={{ textAlign: 'center' }}>
+            <Button
+              variant="text"
+              size="small"
+              onClick={() => setShowBulkInput(!showBulkInput)}
+              disabled={isLoading || isGeocoding || isBulkProcessing}
+              startIcon={
+                showBulkInput ? <ExpandLessIcon /> : <ExpandMoreIcon />
+              }
+              endIcon={<UploadIcon />}
+            >
+              {showBulkInput
+                ? 'Switch to Individual Input'
+                : 'Import Multiple Locations'}
+            </Button>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Bulk Input Form */}
+      <Collapse in={showBulkInput}>
+        <Card elevation={2} sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+            >
+              <UploadIcon color="primary" />
+              Bulk Location Import
+            </Typography>
+
+            <Box component="form" onSubmit={handleBulkSubmit}>
+              <TextField
+                fullWidth
+                multiline
+                rows={6}
+                label="Enter locations, one per line"
+                placeholder={`123 Main St, City
+40.7128,-74.0060
+456 Oak Ave, Town`}
+                value={bulkInputValue}
+                onChange={handleBulkInputChange}
+                disabled={isLoading || isBulkProcessing}
+                error={!!bulkInputError}
+                helperText="Enter one location per line. Mix addresses and coordinates (lat,lng format)."
+                sx={{ mb: 2 }}
+              />
+
+              {bulkInputError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <AlertTitle>Bulk Import Error</AlertTitle>
+                  {bulkInputError}
+                </Alert>
+              )}
+
+              {/* Bulk Results Summary */}
+              {(bulkResults.successful.length > 0 ||
+                bulkResults.failed.length > 0) && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <AlertTitle>Import Results</AlertTitle>
+                  <Box sx={{ mt: 1 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                    >
+                      <CheckCircleIcon fontSize="small" color="success" />
+                      Successfully processed: {
+                        bulkResults.successful.length
+                      }{' '}
+                      locations
+                    </Typography>
+                    {bulkResults.failed.length > 0 && (
+                      <>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1,
+                            mt: 0.5,
+                          }}
+                        >
+                          <ErrorIcon fontSize="small" color="error" />
+                          Failed to process: {bulkResults.failed.length}{' '}
+                          locations
+                        </Typography>
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2" fontWeight="medium">
+                            Failed locations:
+                          </Typography>
+                          <List dense sx={{ mt: 0.5 }}>
+                            {bulkResults.failed.map((failure, index) => (
+                              <ListItem key={index} sx={{ py: 0.25 }}>
+                                <ListItemText
+                                  primary={`"${failure.input}"`}
+                                  secondary={failure.error}
+                                  primaryTypographyProps={{ variant: 'body2' }}
+                                  secondaryTypographyProps={{
+                                    variant: 'caption',
+                                  }}
+                                />
+                              </ListItem>
+                            ))}
+                          </List>
+                        </Box>
+                      </>
+                    )}
+                  </Box>
+                </Alert>
+              )}
+
+              <Button
+                type="submit"
+                variant="contained"
+                color="success"
+                fullWidth={isMobile}
+                disabled={
+                  !bulkInputValue.trim() || isLoading || isBulkProcessing
+                }
+                startIcon={
+                  isBulkProcessing ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <UploadIcon />
+                  )
+                }
+                sx={{ minWidth: isMobile ? 'auto' : 160 }}
+              >
+                {isBulkProcessing ? 'Processing...' : 'Import Locations'}
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      </Collapse>
 
       {/* Location List */}
       {locations.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">
-            Locations ({locations.length}/12)
-          </h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {locations.map((location) => (
-              <div
-                key={location.id}
-                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-md shadow-sm"
-              >
-                <div className="flex items-center space-x-3">
-                  <div
-                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                    style={{ backgroundColor: location.color }}
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {location.name}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onLocationRemove(location.id)}
-                  className="text-red-600 hover:text-red-800 focus:outline-none"
-                  disabled={isLoading}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Card elevation={2}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Locations ({locations.length}/12)
+            </Typography>
+
+            <List sx={{ maxHeight: 300, overflow: 'auto' }}>
+              {locations.map((location, index) => (
+                <Box key={location.id}>
+                  <ListItem
+                    sx={{
+                      bgcolor: 'background.paper',
+                      borderRadius: 1,
+                      mb: 1,
+                      border: 1,
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: '50%',
+                        bgcolor: location.color,
+                        border: 2,
+                        borderColor: 'white',
+                        boxShadow: 1,
+                        mr: 2,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <ListItemText
+                      primary={location.name}
+                      secondary={`${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`}
+                      primaryTypographyProps={{
+                        variant: 'body2',
+                        fontWeight: 'medium',
+                      }}
+                      secondaryTypographyProps={{
+                        variant: 'caption',
+                        color: 'text.secondary',
+                      }}
+                    />
+                    <ListItemSecondaryAction>
+                      <IconButton
+                        edge="end"
+                        onClick={() => onLocationRemove(location.id)}
+                        disabled={isLoading}
+                        size="small"
+                        color="error"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                  {index < locations.length - 1 && <Divider />}
+                </Box>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
       )}
 
       {/* Location Limit Warning */}
       {locations.length >= 12 && (
-        <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded">
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          <AlertTitle>Location Limit Reached</AlertTitle>
           Maximum of 12 locations reached. Remove a location to add more.
-        </div>
+        </Alert>
       )}
-    </div>
+    </Box>
   )
 }
 

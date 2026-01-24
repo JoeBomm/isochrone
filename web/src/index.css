@@ -27,22 +27,45 @@
   border: none !important;
 }
 
+/* Hypothesis marker styles with z-index priority */
+.hypothesis-marker {
+  background: none !important;
+  border: none !important;
+}
+
+/* Ensure optimal points are always visible above debug points (Requirements 3.4) */
+.hypothesis-marker.optimal-point {
+  z-index: 1000 !important;
+}
+
+.hypothesis-marker.debug-point {
+  z-index: 500 !important;
+}
+
 /* Enhanced popup styles */
 .location-popup .leaflet-popup-content,
 .center-popup .leaflet-popup-content,
-.area-popup .leaflet-popup-content {
+.area-popup .leaflet-popup-content,
+.hypothesis-popup .leaflet-popup-content {
   margin: 0 !important;
 }
 
 .location-popup .leaflet-popup-content-wrapper,
 .center-popup .leaflet-popup-content-wrapper,
-.area-popup .leaflet-popup-content-wrapper {
+.area-popup .leaflet-popup-content-wrapper,
+.hypothesis-popup .leaflet-popup-content-wrapper {
   border-radius: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .location-popup .leaflet-popup-tip,
 .center-popup .leaflet-popup-tip,
-.area-popup .leaflet-popup-tip {
+.area-popup .leaflet-popup-tip,
+.hypothesis-popup .leaflet-popup-tip {
   background: white;
+}
+
+/* Developer mode specific styles */
+.hypothesis-popup.developer-mode .leaflet-popup-content-wrapper {
+  border-left: 4px solid #f59e0b;
 }

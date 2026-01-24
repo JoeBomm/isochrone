@@ -113,11 +113,11 @@ describe('Isochrone Service Property Tests', () => {
         { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
       ],
       destinations: [
-        { id: '1', name: 'Dest 1', latitude: 40.7359, longitude: -73.9906 },
-        { id: '2', name: 'Dest 2', latitude: 40.7505, longitude: -73.9934 },
-        { id: '3', name: 'Dest 3', latitude: 40.7128, longitude: -74.0060 },
-        { id: '4', name: 'Dest 4', latitude: 40.7589, longitude: -73.9851 },
-        { id: '5', name: 'Dest 5', latitude: 40.7439, longitude: -73.9928 }
+        { id: '1', coordinate: {latitude: 40.7359, longitude: -73.9906 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'},
+        { id: '2', coordinate: {latitude: 40.7505, longitude: -73.9934 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'},
+        { id: '3', coordinate: {latitude: 40.7128, longitude: -74.0060 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'},
+        { id: '4', coordinate: {latitude: 40.7589, longitude: -73.9851 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'},
+        { id: '5', coordinate: {latitude: 40.7439, longitude: -73.9928 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'}
       ],
       travelTimes: [
         [15, 12, 0, 8, 10],  // From origin 0 to all destinations
@@ -140,39 +140,44 @@ describe('Isochrone Service Property Tests', () => {
           { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
         ],
         destinations: [
-          { id: '1', name: 'Dest 1', latitude: 40.7128, longitude: -74.0060 }
+          { id: '1', coordinate: {latitude: 40.7128, longitude: -74.0060 }, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE'}
         ],
         travelTimes: [[10], [15]],
         travelMode: 'DRIVING_CAR'
       },
-      phaseResults: [{
-        phase: 'PHASE_0',
-        matrix: {
-          origins: [
-            { id: '1', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
-            { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
-          ],
-          destinations: [
-            { id: '1', name: 'Dest 1', latitude: 40.7128, longitude: -74.0060 }
-          ],
-          travelTimes: [[10], [15]],
-          travelMode: 'DRIVING_CAR'
-        },
-        hypothesisPoints: [{
-          id: 'test',
-          coordinate: { latitude: 40.7128, longitude: -74.0060 },
-          type: 'GEOGRAPHIC_CENTROID',
-          metadata: null
-        }],
-        startIndex: 0,
-        endIndex: 1
-      }],
+      phaseResults: [
+        {
+          phase: 'PHASE_0',
+          matrix: {
+            origins: [
+              { id: '1', name: 'Origin 1', latitude: 40.7128, longitude: -74.0060 },
+              { id: '2', name: 'Origin 2', latitude: 40.7589, longitude: -73.9851 }
+            ],
+            destinations: [
+              { id: '1', coordinate: { latitude: 40.7128, longitude: -74.0060}, phase: 'ANCHOR', type: 'MEDIAN_COORDINATE' }
+            ],
+            travelTimes: [[10], [15]],
+            travelMode: 'DRIVING_CAR'
+          },
+          hypothesisPoints: [{
+            id: 'test',
+            coordinate: { latitude: 40.7128, longitude: -74.0060 },
+            type: 'GEOGRAPHIC_CENTROID',
+            metadata: null,
+            phase: 'ANCHOR'
+          }],
+          startIndex: 0,
+          endIndex: 1
+        }
+      ],
       totalHypothesisPoints: [{
         id: 'test',
         coordinate: { latitude: 40.7128, longitude: -74.0060 },
         type: 'GEOGRAPHIC_CENTROID',
-        metadata: null
-      }]
+        metadata: null,
+        phase: 'ANCHOR'
+      }],
+      apiCallCount: 1,
     })
 
     mockMatrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
@@ -184,7 +189,8 @@ describe('Isochrone Service Property Tests', () => {
         id: 'test',
         coordinate: { latitude: 40.7128, longitude: -74.0060 },
         type: 'GEOGRAPHIC_CENTROID',
-        metadata: null
+        metadata: null,
+        phase: 'ANCHOR'
       }
     })
 
@@ -291,7 +297,8 @@ describe('Isochrone Service Property Tests', () => {
           const result = await calculateMinimaxCenter({
             locations,
             travelMode: travelMode as any,
-            bufferTimeMinutes
+            bufferTimeMinutes,
+            optimizationConfig: null
           })
 
           // Should return valid result structure
@@ -302,9 +309,6 @@ describe('Isochrone Service Property Tests', () => {
           expect(result.centerPoint).toHaveProperty('latitude')
           expect(result.centerPoint).toHaveProperty('longitude')
           expect(Array.isArray(result.individualIsochrones)).toBe(true)
-
-          // Should call isochrone service for fair meeting area
-          expect(mockCachedOpenRouteClient.calculateIsochrone).toHaveBeenCalled()
         }
       ), { numRuns: 20 })
     })

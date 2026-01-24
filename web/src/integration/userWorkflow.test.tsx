@@ -1,23 +1,31 @@
 import { render, screen, fireEvent, waitFor } from '@redwoodjs/testing/web'
 import { MockedProvider } from '@apollo/client/testing'
 import HomePage from 'src/pages/HomePage/HomePage'
-import { GEOCODE_ADDRESS, CALCULATE_MINIMAX_CENTER } from 'src/lib/graphql'
+import { GEOCODE_ADDRESS, GENERATE_HYPOTHESIS_POINTS, CALCULATE_ISOCHRONE } from 'src/lib/graphql'
 
 // Mock the Map component to avoid Leaflet issues in JSDOM
 jest.mock('src/components/Map/Map', () => {
-  return function MockMap({ locations, centerPoint, fairMeetingArea }) {
+  return function MockMap({
+    locations,
+    hypothesisPoints,
+    isochrones,
+    onHypothesisPointClick
+  }) {
     return (
       <div data-testid="mock-map" className="map-container">
         <div>Mock Map Component</div>
         <div>Locations: {locations?.length || 0}</div>
-        {centerPoint && (
-          <div data-testid="center-point">
-            Center Point: {centerPoint.latitude}, {centerPoint.longitude}
-          </div>
-        )}
-        {fairMeetingArea && (
-          <div data-testid="fair-meeting-area">Fair Meeting Area Present</div>
-        )}
+        <div>Hypothesis Points: {hypothesisPoints?.length || 0}</div>
+        <div>Isochrones: {isochrones?.length || 0}</div>
+        {hypothesisPoints?.map((point, index) => (
+          <button
+            key={point.id}
+            data-testid={`hypothesis-point-${index}`}
+            onClick={() => onHypothesisPointClick?.(point)}
+          >
+            {point.id}
+          </button>
+        ))}
       </div>
     )
   }
@@ -39,42 +47,177 @@ const mockGeocodeResponse = {
   }
 }
 
-const mockCalculateResponse = {
+const mockGenerateHypothesisPointsResponse = {
   request: {
-    query: CALCULATE_MINIMAX_CENTER,
+    query: GENERATE_HYPOTHESIS_POINTS,
     variables: {
       locations: [
         { name: 'New York, NY', latitude: 40.7128, longitude: -74.0060 },
         { name: 'Brooklyn, NY', latitude: 40.6892, longitude: -74.0445 }
       ],
-      bufferTimeMinutes: 10,
-      travelMode: 'DRIVING_CAR'
+      travelMode: 'DRIVING_CAR',
+      enableLocalRefinement: false,
+      optimizationGoal: 'MINIMIZE_AVERAGE_TIME',
+      topM: 5,
+      topN: 5,
+      deduplicationThreshold: 100.0
     }
   },
   result: {
     data: {
-      calculateMinimaxCenter: {
-        centerPoint: {
-          latitude: 40.7010,
-          longitude: -74.0252
-        },
-        fairMeetingArea: {
-          type: 'Polygon',
-          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
-        },
-        individualIsochrones: []
+      generateHypothesisPoints: {
+        anchorPoints: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'ANCHOR',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        coarseGridPoints: [],
+        localRefinementPoints: [],
+        finalPoints: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'FINAL_OUTPUT',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        pointsOfInterest: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'FINAL_OUTPUT',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        matrixApiCalls: 1,
+        totalHypothesisPoints: 1
       }
     }
   }
 }
 
-const mockCalculateCoordinateResponse = {
+const mockCalculateIsochroneResponse = {
   request: {
-    query: CALCULATE_MINIMAX_CENTER,
+    query: CALCULATE_ISOCHRONE,
+    variables: {
+      pointId: 'geographic_centroid',
+      coordinate: { latitude: 40.7010, longitude: -74.0252 },
+      travelTimeMinutes: 10,
+      travelMode: 'DRIVING_CAR'
+    }
+  },
+  result: {
+    data: {
+      calculateIsochrone: {
+        type: 'Polygon',
+        coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+      }
+    }
+  }
+}
+
+const mockGenerateHypothesisPointsCoordinateResponse = [{
+  request: {
+    query: GENERATE_HYPOTHESIS_POINTS,
     variables: {
       locations: [
         { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.0060 },
         { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 }
+      ],
+      travelMode: 'DRIVING_CAR',
+      enableLocalRefinement: false,
+      optimizationGoal: 'MINIMIZE_AVERAGE_TIME',
+      topM: 5,
+      topN: 5,
+      deduplicationThreshold: 100.0
+    }
+  },
+  result: {
+    data: {
+      generateHypothesisPoints: {
+        anchorPoints: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'ANCHOR',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        coarseGridPoints: [],
+        localRefinementPoints: [],
+        finalPoints: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'FINAL_OUTPUT',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        pointsOfInterest: [
+          {
+            id: 'geographic_centroid',
+            coordinate: { latitude: 40.7010, longitude: -74.0252 },
+            type: 'GEOGRAPHIC_CENTROID',
+            phase: 'FINAL_OUTPUT',
+            score: 15.5,
+            travelTimeMetrics: {
+              maxTravelTime: 15.5,
+              averageTravelTime: 12.3,
+              totalTravelTime: 24.6,
+              variance: 2.1
+            }
+          }
+        ],
+        matrixApiCalls: 1,
+        totalHypothesisPoints: 1
+      }
+    }
+  }
+}, {
+  request: {
+    query: "CALCULATE_MINIMAX_CENTER",
+    variables: {
+      locations: [
+        { name: 'Location 1', latitude: 40.7128, longitude: -74.0060 },
+        { name: 'Location 2', latitude: 40.7589, longitude: -73.9851 }
       ],
       bufferTimeMinutes: 10,
       travelMode: 'DRIVING_CAR'
@@ -95,7 +238,7 @@ const mockCalculateCoordinateResponse = {
       }
     }
   }
-}
+}]
 
 const mockBrooklynGeocodeResponse = {
   request: {
@@ -115,7 +258,7 @@ const mockBrooklynGeocodeResponse = {
 describe('Integration Tests - Complete User Workflows', () => {
   describe('End-to-End Address Input to Fair Meeting Point', () => {
     it('should complete full workflow from address input to result display', async () => {
-      const mocks = [mockGeocodeResponse, mockBrooklynGeocodeResponse, mockCalculateResponse]
+      const mocks = [mockGeocodeResponse, mockBrooklynGeocodeResponse, mockCalculateIsochroneResponse]
 
       render(
         <MockedProvider mocks={mocks} addTypename={false}>

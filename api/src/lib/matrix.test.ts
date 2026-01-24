@@ -155,8 +155,8 @@ describe('TravelTimeMatrixService', () => {
     ]
 
     const mockPhase1Points: HypothesisPoint[] = [
-      { id: 'p1_1', coordinate: { latitude: 0.2, longitude: 0.2 }, type: 'COARSE_GRID', metadata: null },
-      { id: 'p1_2', coordinate: { latitude: 0.8, longitude: 0.8 }, type: 'COARSE_GRID', metadata: null }
+      { id: 'p1_1', coordinate: { latitude: 0.2, longitude: 0.2 }, type: 'COARSE_GRID_CELL', metadata: null },
+      { id: 'p1_2', coordinate: { latitude: 0.8, longitude: 0.8 }, type: 'COARSE_GRID_CELL', metadata: null }
     ]
 
     const mockMatrixEvaluator = jest.fn()
@@ -185,26 +185,53 @@ describe('TravelTimeMatrixService', () => {
           travelMode: 'DRIVING_CAR'
         }
 
-        mockMatrixEvaluator.mockResolvedValue(mockCombinedMatrix)
+        // Mock the batchedMatrixService
+        const { batchedMatrixService } = require('src/lib/batchedMatrix')
+        jest.spyOn(batchedMatrixService, 'evaluateCoarseGridBatched').mockResolvedValue({
+          combinedMatrix: mockCombinedMatrix,
+          phaseResults: [
+            {
+              phase: 'PHASE_0',
+              matrix: {
+                origins: mockCombinedMatrix.origins,
+                destinations: mockPhase0Points,
+                travelTimes: [[10, 12], [15, 18]],
+                travelMode: 'DRIVING_CAR'
+              },
+              hypothesisPoints: mockPhase0Points,
+              startIndex: 0,
+              endIndex: 2
+            },
+            {
+              phase: 'PHASE_1',
+              matrix: {
+                origins: mockCombinedMatrix.origins,
+                destinations: mockPhase1Points,
+                travelTimes: [[15, 25], [20, 5]],
+                travelMode: 'DRIVING_CAR'
+              },
+              hypothesisPoints: mockPhase1Points,
+              startIndex: 2,
+              endIndex: 4
+            }
+          ],
+          totalHypothesisPoints: [...mockPhase0Points, ...mockPhase1Points],
+          apiCallCount: 1
+        })
 
         const result = await matrixService.evaluateBatchedMatrix(
           mockOrigins,
           mockPhase0Points,
           mockPhase1Points,
-          'DRIVING_CAR',
-          mockMatrixEvaluator
+          'DRIVING_CAR'
         )
 
-        // Verify single API call was made
-        expect(mockMatrixEvaluator).toHaveBeenCalledTimes(1)
-        expect(mockMatrixEvaluator).toHaveBeenCalledWith(
+        // Verify batchedMatrixService was called correctly
+        expect(batchedMatrixService.evaluateCoarseGridBatched).toHaveBeenCalledTimes(1)
+        expect(batchedMatrixService.evaluateCoarseGridBatched).toHaveBeenCalledWith(
           mockOrigins,
-          [
-            { latitude: 0.5, longitude: 0.5 },
-            { latitude: 0.3, longitude: 0.3 },
-            { latitude: 0.2, longitude: 0.2 },
-            { latitude: 0.8, longitude: 0.8 }
-          ],
+          mockPhase0Points,
+          mockPhase1Points,
           'DRIVING_CAR'
         )
 
@@ -245,14 +272,28 @@ describe('TravelTimeMatrixService', () => {
           travelMode: 'DRIVING_CAR'
         }
 
-        mockMatrixEvaluator.mockResolvedValue(mockPhase0Matrix)
+        // Mock the batchedMatrixService for Phase 0 only
+        const { batchedMatrixService } = require('src/lib/batchedMatrix')
+        jest.spyOn(batchedMatrixService, 'evaluateCoarseGridBatched').mockResolvedValue({
+          combinedMatrix: mockPhase0Matrix,
+          phaseResults: [
+            {
+              phase: 'PHASE_0',
+              matrix: mockPhase0Matrix,
+              hypothesisPoints: mockPhase0Points,
+              startIndex: 0,
+              endIndex: 2
+            }
+          ],
+          totalHypothesisPoints: mockPhase0Points,
+          apiCallCount: 1
+        })
 
         const result = await matrixService.evaluateBatchedMatrix(
           mockOrigins,
           mockPhase0Points,
           [], // No Phase 1 points
-          'DRIVING_CAR',
-          mockMatrixEvaluator
+          'DRIVING_CAR'
         )
 
         expect(result.phaseResults).toHaveLength(1)
@@ -261,44 +302,71 @@ describe('TravelTimeMatrixService', () => {
       })
     })
 
-    describe('evaluatePhase2Matrix', () => {
-      it('should evaluate Phase 2 points separately', async () => {
-        const mockPhase2Points: HypothesisPoint[] = [
-          { id: 'p2_1', coordinate: { latitude: 0.45, longitude: 0.45 }, type: 'LOCAL_REFINEMENT', metadata: null },
+    describe('evaluateLocalGridsSeparately', () => {
+      it('should evaluate local grids using separate Matrix API calls', async () => {
+        const mockLocalGrid1: HypothesisPoint[] = [
+          { id: 'p2_1', coordinate: { latitude: 0.45, longitude: 0.45 }, type: 'LOCAL_REFINEMENT', metadata: null }
+        ]
+
+        const mockLocalGrid2: HypothesisPoint[] = [
           { id: 'p2_2', coordinate: { latitude: 0.55, longitude: 0.55 }, type: 'LOCAL_REFINEMENT', metadata: null }
         ]
 
-        const mockPhase2Matrix: TravelTimeMatrix = {
-          origins: [
-            { id: 'origin1', name: 'Origin 1', latitude: 0, longitude: 0 },
-            { id: 'origin2', name: 'Origin 2', latitude: 1, longitude: 1 }
-          ],
-          destinations: [
-            { id: 'dest1', coordinate: { latitude: 0.45, longitude: 0.45 }, type: 'PARTICIPANT_LOCATION', metadata: null },
-            { id: 'dest2', coordinate: { latitude: 0.55, longitude: 0.55 }, type: 'PARTICIPANT_LOCATION', metadata: null }
-          ],
-          travelTimes: [
-            [8, 12],
-            [12, 8]
-          ],
-          travelMode: 'DRIVING_CAR'
-        }
+        const mockLocalGridResults = [
+          {
+            phase: 'PHASE_2' as const,
+            matrix: {
+              origins: [
+                { id: 'origin1', name: 'Origin 1', latitude: 0, longitude: 0 },
+                { id: 'origin2', name: 'Origin 2', latitude: 1, longitude: 1 }
+              ],
+              destinations: mockLocalGrid1,
+              travelTimes: [[8], [12]],
+              travelMode: 'DRIVING_CAR'
+            },
+            hypothesisPoints: mockLocalGrid1,
+            startIndex: 0,
+            endIndex: 1
+          },
+          {
+            phase: 'PHASE_2' as const,
+            matrix: {
+              origins: [
+                { id: 'origin1', name: 'Origin 1', latitude: 0, longitude: 0 },
+                { id: 'origin2', name: 'Origin 2', latitude: 1, longitude: 1 }
+              ],
+              destinations: mockLocalGrid2,
+              travelTimes: [[12], [8]],
+              travelMode: 'DRIVING_CAR'
+            },
+            hypothesisPoints: mockLocalGrid2,
+            startIndex: 0,
+            endIndex: 1
+          }
+        ]
 
-        mockMatrixEvaluator.mockResolvedValue(mockPhase2Matrix)
+        // Mock the batchedMatrixService
+        const { batchedMatrixService } = require('src/lib/batchedMatrix')
+        jest.spyOn(batchedMatrixService, 'evaluateLocalGridsSeparately').mockResolvedValue(mockLocalGridResults)
 
-        const result = await matrixService.evaluatePhase2Matrix(
+        const result = await matrixService.evaluateLocalGridsSeparately(
           mockOrigins,
-          mockPhase2Points,
-          'DRIVING_CAR',
-          mockMatrixEvaluator
+          [mockLocalGrid1, mockLocalGrid2],
+          'DRIVING_CAR'
         )
 
-        expect(mockMatrixEvaluator).toHaveBeenCalledTimes(1)
-        expect(result.phase).toBe('PHASE_2')
-        expect(result.matrix).toBe(mockPhase2Matrix)
-        expect(result.hypothesisPoints).toEqual(mockPhase2Points)
-        expect(result.startIndex).toBe(0)
-        expect(result.endIndex).toBe(2)
+        // Verify batchedMatrixService was called correctly
+        expect(batchedMatrixService.evaluateLocalGridsSeparately).toHaveBeenCalledTimes(1)
+        expect(batchedMatrixService.evaluateLocalGridsSeparately).toHaveBeenCalledWith(
+          mockOrigins,
+          [mockLocalGrid1, mockLocalGrid2],
+          'DRIVING_CAR'
+        )
+
+        expect(result).toEqual(mockLocalGridResults)
+        expect(result).toHaveLength(2)
+        expect(result[0].phase).toBe('PHASE_2')
+        expect(result[1].phase).toBe('PHASE_2')
       })
     })
 
@@ -456,8 +524,8 @@ describe('TravelTimeMatrixService', () => {
     describe('applyMultiPhaseTieBreakingRules', () => {
       const allHypothesisPoints: HypothesisPoint[] = [
         { id: 'hp1', coordinate: { latitude: 0, longitude: 0 }, type: 'PARTICIPANT_LOCATION', metadata: null },
-        { id: 'hp2', coordinate: { latitude: 1, longitude: 1 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'hp3', coordinate: { latitude: 0.5, longitude: 0.5 }, type: 'LOCAL_REFINEMENT', metadata: null }
+        { id: 'hp2', coordinate: { latitude: 1, longitude: 1 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'hp3', coordinate: { latitude: 0.5, longitude: 0.5 }, type: 'LOCAL_REFINEMENT_CELL', metadata: null }
       ]
 
       const geographicCentroid: Coordinate = { latitude: 0.5, longitude: 0.5 }

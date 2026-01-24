@@ -664,12 +664,12 @@ describe('Multi-Phase Optimization Integration Tests', () => {
           { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
           { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
           // Phase 1 points
-          { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-          { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-          { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-          { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-          { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-          { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+          { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+          { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+          { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+          { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+          { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+          { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null }
         ],
         travelTimes: [
           [10, 10, 5, 15, 12, 18, 12, 16, 10, 20, 14], // From origin 0
@@ -716,12 +716,12 @@ describe('Multi-Phase Optimization Integration Tests', () => {
               { id: 'origin_1', name: 'Origin 2', latitude: 40.7200, longitude: -74.0100 }
             ],
             destinations: [
-              { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-              { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-              { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-              { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-              { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-              { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+              { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+              { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+              { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+              { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+              { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+              { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null }
             ],
             travelTimes: [
               [18, 12, 16, 10, 20, 14],
@@ -730,12 +730,12 @@ describe('Multi-Phase Optimization Integration Tests', () => {
             travelMode: 'DRIVING_CAR'
           },
           hypothesisPoints: [
-            { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-            { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-            { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-            { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-            { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-            { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+            { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+            { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+            { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+            { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+            { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+            { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null }
           ],
           startIndex: 5,
           endIndex: 11
@@ -747,12 +747,12 @@ describe('Multi-Phase Optimization Integration Tests', () => {
         { id: 'dest_2', coordinate: { latitude: 40.7128, longitude: -74.0060 }, type: 'PARTICIPANT_LOCATION', metadata: null },
         { id: 'dest_3', coordinate: { latitude: 40.7200, longitude: -74.0100 }, type: 'PARTICIPANT_LOCATION', metadata: null },
         { id: 'dest_4', coordinate: { latitude: 40.7164, longitude: -74.008 }, type: 'PAIRWISE_MIDPOINT', metadata: null },
-        { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID', metadata: null },
-        { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID', metadata: null }
+        { id: 'dest_5', coordinate: { latitude: 40.705, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'dest_6', coordinate: { latitude: 40.705, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'dest_7', coordinate: { latitude: 40.715, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'dest_8', coordinate: { latitude: 40.715, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'dest_9', coordinate: { latitude: 40.725, longitude: -74.015 }, type: 'COARSE_GRID_CELL', metadata: null },
+        { id: 'dest_10', coordinate: { latitude: 40.725, longitude: -74.005 }, type: 'COARSE_GRID_CELL', metadata: null }
       ]
     })
 
@@ -1163,7 +1163,7 @@ describe('Multi-Phase Optimization Integration Tests', () => {
         optimalHypothesisPoint: {
           id: 'dest_8',
           coordinate: { latitude: 40.715, longitude: -74.005 },
-          type: 'COARSE_GRID',
+          type: 'COARSE_GRID_CELL',
           metadata: null
         }
       })

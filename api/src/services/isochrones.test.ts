@@ -1,11 +1,10 @@
 import fc from 'fast-check'
 import {
   calculateMinimaxCenter,
-  generateHypothesisPoints,
+  generateBaselineHypothesisPoints,
   generateMultiPhaseHypothesisPoints,
   generateLocalRefinementHypothesisPoints,
   DEFAULT_OPTIMIZATION_CONFIG,
-  type HypothesisPoint,
   type OptimizationConfig
 } from './isochrones'
 import type { Location } from 'src/lib/geometry'
@@ -65,8 +64,16 @@ describe('isochrones service', () => {
     // Set up default mock implementations
     mockCachedOpenRouteClient.calculateIsochrone.mockResolvedValue(mockPolygon)
     mockCachedOpenRouteClient.calculateTravelTimeMatrix.mockResolvedValue({
-      origins: [{ latitude: 0, longitude: 0 }, { latitude: 1, longitude: 1 }],
-      destinations: [{ latitude: 0.5, longitude: 0.5 }],
+      origins: [
+        { id: "id1", name: "name1", latitude: 0, longitude: 0 },
+        { id: "id2", name: "name2", latitude: 1, longitude: 1 }
+      ],
+      destinations: [{
+        id:"destId",
+        coordinate: { latitude: 0.5, longitude: 0.5 },
+        phase:'ANCHOR',
+        type:'MEDIAN_COORDINATE'
+      }],
       travelTimes: [[10], [15]],
       travelMode: 'DRIVING_CAR'
     })
@@ -80,16 +87,32 @@ describe('isochrones service', () => {
 
     mockMatrixService.evaluateBatchedMatrix.mockResolvedValue({
       combinedMatrix: {
-        origins: [{ latitude: 0, longitude: 0 }, { latitude: 1, longitude: 1 }],
-        destinations: [{ latitude: 0.5, longitude: 0.5 }],
+        origins: [
+        { id: "id1", name: "name1", latitude: 0, longitude: 0 },
+        { id: "id2", name: "name2", latitude: 1, longitude: 1 }
+      ],
+      destinations: [{
+        id:"destId",
+        coordinate: { latitude: 0.5, longitude: 0.5 },
+        phase:'ANCHOR',
+        type:'MEDIAN_COORDINATE'
+      }],
         travelTimes: [[10], [15]],
         travelMode: 'DRIVING_CAR'
       },
       phaseResults: [{
         phase: 'PHASE_0',
         matrix: {
-          origins: [{ latitude: 0, longitude: 0 }, { latitude: 1, longitude: 1 }],
-          destinations: [{ latitude: 0.5, longitude: 0.5 }],
+          origins: [
+          { id: "id1", name: "name1", latitude: 0, longitude: 0 },
+          { id: "id2", name: "name2", latitude: 1, longitude: 1 }
+        ],
+        destinations: [{
+          id:"destId",
+          coordinate: { latitude: 0.5, longitude: 0.5 },
+          phase:'ANCHOR',
+          type:'MEDIAN_COORDINATE'
+        }],
           travelTimes: [[10], [15]],
           travelMode: 'DRIVING_CAR'
         },
@@ -97,6 +120,7 @@ describe('isochrones service', () => {
           id: 'test',
           coordinate: { latitude: 0.5, longitude: 0.5 },
           type: 'GEOGRAPHIC_CENTROID',
+          phase: 'ANCHOR',
           metadata: null
         }],
         startIndex: 0,
@@ -106,8 +130,10 @@ describe('isochrones service', () => {
         id: 'test',
         coordinate: { latitude: 0.5, longitude: 0.5 },
         type: 'GEOGRAPHIC_CENTROID',
+        phase: 'ANCHOR',
         metadata: null
-      }]
+      }],
+      apiCallCount: 1
     })
 
     mockMatrixService.findMultiPhaseMinimaxOptimal.mockReturnValue({
@@ -119,6 +145,7 @@ describe('isochrones service', () => {
         id: 'test',
         coordinate: { latitude: 0.5, longitude: 0.5 },
         type: 'GEOGRAPHIC_CENTROID',
+        phase: 'ANCHOR',
         metadata: null
       }
     })
@@ -153,7 +180,7 @@ describe('isochrones service', () => {
         { id: '2', name: 'Location 2', coordinate: { latitude: 2, longitude: 2 } }
       ]
 
-      const result = generateHypothesisPoints(locations)
+      const result = generateBaselineHypothesisPoints(locations)
 
       // Should generate: geographic_centroid, median_coordinate, 2 participant_locations, 1 pairwise_midpoint
       expect(result).toHaveLength(5)
@@ -178,7 +205,7 @@ describe('isochrones service', () => {
         { id: 'loc2', name: 'Location 2', coordinate: { latitude: 2, longitude: 2 } }
       ]
 
-      const result = generateHypothesisPoints(locations)
+      const result = generateBaselineHypothesisPoints(locations)
 
       const participantPoints = result.filter(p => p.type === 'PARTICIPANT_LOCATION')
       expect(participantPoints).toHaveLength(2)
@@ -193,7 +220,7 @@ describe('isochrones service', () => {
         { id: 'loc2', name: 'Location 2', coordinate: { latitude: 2, longitude: 2 } }
       ]
 
-      const result = generateHypothesisPoints(locations)
+      const result = generateBaselineHypothesisPoints(locations)
 
       const pairwisePoints = result.filter(p => p.type === 'PAIRWISE_MIDPOINT')
       expect(pairwisePoints).toHaveLength(1)
@@ -202,8 +229,8 @@ describe('isochrones service', () => {
     })
 
     it('should throw error when no locations provided', () => {
-      expect(() => generateHypothesisPoints([])).toThrow('No locations provided for hypothesis point generation')
-      expect(() => generateHypothesisPoints(null as any)).toThrow('No locations provided for hypothesis point generation')
+      expect(() => generateBaselineHypothesisPoints([])).toThrow('No locations provided for hypothesis point generation')
+      expect(() => generateBaselineHypothesisPoints(null as any)).toThrow('No locations provided for hypothesis point generation')
     })
 
     it('should throw error when coordinate validation fails', () => {
@@ -213,7 +240,7 @@ describe('isochrones service', () => {
         { id: '1', name: 'Location 1', coordinate: { latitude: 0, longitude: 0 } }
       ]
 
-      expect(() => generateHypothesisPoints(locations)).toThrow('Invalid coordinates for participant location')
+      expect(() => generateBaselineHypothesisPoints(locations)).toThrow('Invalid coordinates for participant location')
     })
   })
 
@@ -370,7 +397,7 @@ describe('isochrones service', () => {
       const result = generateLocalRefinementHypothesisPoints(candidates, config)
 
       expect(result).toHaveLength(2) // Mocked to return 2 points
-      expect(result[0].type).toBe('LOCAL_REFINEMENT')
+      expect(result[0].type).toBe('LOCAL_REFINEMENT_CELL')
       expect(result[0].id).toMatch(/^local_refinement_/)
       expect(mockGeometryService.generateLocalRefinementPoints).toHaveBeenCalledWith(
         candidates, 2, 2, 3

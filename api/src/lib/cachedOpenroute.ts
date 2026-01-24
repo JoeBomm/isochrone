@@ -1,8 +1,9 @@
-import { openRouteClient, Coordinate, IsochroneParams } from './openroute'
-import { cache, IsochroneCacheKey, MatrixCacheKey, CacheStats } from './cache'
-import { logger } from './logger'
 import { GeoJSON } from 'geojson'
 import type { TravelMode, TravelTimeMatrix } from 'types/graphql'
+
+import { cache, IsochroneCacheKey, MatrixCacheKey, CacheStats } from './cache'
+import { logger } from './logger'
+import { openRouteClient, Coordinate, IsochroneParams } from './openroute'
 
 class CachedOpenRouteClient {
   // Default TTLs in seconds
@@ -11,30 +12,48 @@ class CachedOpenRouteClient {
   private readonly GEOCODING_TTL = 7 * 24 * 60 * 60 // 7 days
   private readonly LOCATION_PRECISION = 100 // meters
 
-  async calculateIsochrone(coordinate: Coordinate, params: IsochroneParams): Promise<GeoJSON.Polygon> {
+  async calculateIsochrone(
+    coordinate: Coordinate,
+    params: IsochroneParams
+  ): Promise<GeoJSON.Polygon> {
     const cacheKey: IsochroneCacheKey = {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
       travelTimeMinutes: params.travelTimeMinutes,
       travelMode: params.travelMode,
-      precision: this.LOCATION_PRECISION
+      precision: this.LOCATION_PRECISION,
     }
 
     try {
       // Try to get from cache first
       const cachedResult = await cache.getIsochroneCache(cacheKey)
       if (cachedResult) {
-        logger.info(`Cache hit for isochrone: ${coordinate.latitude}, ${coordinate.longitude}`)
+        logger.info(
+          `Cache hit for isochrone: ${coordinate.latitude}, ${coordinate.longitude}`
+        )
         return cachedResult
       }
 
       // Cache miss - fetch from API
-      logger.info(`Cache miss for isochrone: ${coordinate.latitude}, ${coordinate.longitude}`)
+      logger.info(
+        `Cache miss for isochrone: ${coordinate.latitude}, ${coordinate.longitude}`
+      )
 
-      const result = await openRouteClient.calculateIsochrone(coordinate, params)
+      const result = await openRouteClient.calculateIsochrone(
+        coordinate,
+        params
+      )
 
       // Store in cache
-      await cache.setIsochroneCache(cacheKey, result, this.ISOCHRONE_TTL)
+      try {
+        await cache.setIsochroneCache(cacheKey, result, this.ISOCHRONE_TTL)
+      } catch (cacheStoreError) {
+        logger.warn(
+          'Failed to store isochrone in cache, continuing without caching:',
+          cacheStoreError
+        )
+        // Continue execution - caching failure is not critical
+      }
 
       return result
     } catch (error) {
@@ -43,7 +62,12 @@ class CachedOpenRouteClient {
       // If cache fails, try direct API call as fallback
       if (error.message.includes('cache') || error.message.includes('redis')) {
         logger.warn('Cache unavailable, falling back to direct API call')
-        return await openRouteClient.calculateIsochrone(coordinate, params)
+        try {
+          return await openRouteClient.calculateIsochrone(coordinate, params)
+        } catch (fallbackError) {
+          logger.error('Direct API fallback also failed:', fallbackError)
+          throw fallbackError // Re-throw the API error, not the cache error
+        }
       }
 
       throw error
@@ -90,31 +114,47 @@ class CachedOpenRouteClient {
       origins,
       destinations,
       travelMode,
-      precision: this.LOCATION_PRECISION
+      precision: this.LOCATION_PRECISION,
     }
 
     try {
       // Try to get from cache first (Requirements 7.1 - caching support for multi-phase)
       const cachedResult = await cache.getMatrixCache(cacheKey)
       if (cachedResult) {
-        logger.info(`Cache hit for matrix: ${origins.length} origins to ${destinations.length} destinations`)
+        logger.info(
+          `Cache hit for matrix: ${origins.length} origins to ${destinations.length} destinations`
+        )
         return cachedResult
       }
 
       // Cache miss - fetch from API
-      logger.info(`Cache miss for matrix: ${origins.length} origins to ${destinations.length} destinations`)
+      logger.info(
+        `Cache miss for matrix: ${origins.length} origins to ${destinations.length} destinations`
+      )
 
       let result: TravelTimeMatrix
       try {
-        result = await openRouteClient.calculateTravelTimeMatrix(origins, destinations, travelMode)
-        logger.info(`Matrix API call successful: ${result.travelTimes.length}×${result.travelTimes[0]?.length || 0}`)
+        result = await openRouteClient.calculateTravelTimeMatrix(
+          origins,
+          destinations,
+          travelMode
+        )
+        logger.info(
+          `Matrix API call successful: ${result.travelTimes.length}×${result.travelTimes[0]?.length || 0}`
+        )
       } catch (apiError) {
         logger.error(`Matrix API call failed: ${apiError.message}`)
 
         // Enhanced error handling for multi-phase matrix failures
-        if (apiError.message.includes('rate limit') || apiError.message.includes('quota')) {
+        if (
+          apiError.message.includes('rate limit') ||
+          apiError.message.includes('quota')
+        ) {
           throw new Error(`Matrix API rate limit exceeded: ${apiError.message}`)
-        } else if (apiError.message.includes('network') || apiError.message.includes('timeout')) {
+        } else if (
+          apiError.message.includes('network') ||
+          apiError.message.includes('timeout')
+        ) {
           throw new Error(`Matrix API network error: ${apiError.message}`)
         } else {
           throw new Error(`Matrix API error: ${apiError.message}`)
@@ -122,29 +162,40 @@ class CachedOpenRouteClient {
       }
 
       // Validate result before caching
-      if (!result || !result.travelTimes || !Array.isArray(result.travelTimes)) {
-        throw new Error('Invalid matrix result: missing or invalid travel times')
+      if (
+        !result ||
+        !result.travelTimes ||
+        !Array.isArray(result.travelTimes)
+      ) {
+        throw new Error(
+          'Invalid matrix result: missing or invalid travel times'
+        )
       }
 
       if (result.travelTimes.length !== origins.length) {
-        throw new Error(`Invalid matrix result: expected ${origins.length} origin rows, got ${result.travelTimes.length}`)
+        throw new Error(
+          `Invalid matrix result: expected ${origins.length} origin rows, got ${result.travelTimes.length}`
+        )
       }
 
       if (result.travelTimes[0]?.length !== destinations.length) {
-        throw new Error(`Invalid matrix result: expected ${destinations.length} destination columns, got ${result.travelTimes[0]?.length || 0}`)
+        throw new Error(
+          `Invalid matrix result: expected ${destinations.length} destination columns, got ${result.travelTimes[0]?.length || 0}`
+        )
       }
 
       // Store in cache (Requirements 8.1, 8.2 - multi-phase caching support)
       try {
         await cache.setMatrixCache(cacheKey, result, this.MATRIX_TTL)
-        logger.info(`Matrix result cached successfully: ${origins.length}×${destinations.length}`)
+        logger.info(
+          `Matrix result cached successfully: ${origins.length}×${destinations.length}`
+        )
       } catch (cacheError) {
         logger.warn(`Failed to cache matrix result: ${cacheError.message}`)
         // Continue execution even if caching fails
       }
 
       return result
-
     } catch (error) {
       logger.error(`Error in cached matrix calculation: ${error.message}`)
 
@@ -152,10 +203,18 @@ class CachedOpenRouteClient {
       if (error.message.includes('cache') || error.message.includes('redis')) {
         logger.warn('Cache unavailable, falling back to direct API call')
         try {
-          return await openRouteClient.calculateTravelTimeMatrix(origins, destinations, travelMode)
+          return await openRouteClient.calculateTravelTimeMatrix(
+            origins,
+            destinations,
+            travelMode
+          )
         } catch (fallbackError) {
-          logger.error(`Fallback API call also failed: ${fallbackError.message}`)
-          throw new Error(`Both cached and direct matrix calculation failed: ${fallbackError.message}`)
+          logger.error(
+            `Fallback API call also failed: ${fallbackError.message}`
+          )
+          throw new Error(
+            `Both cached and direct matrix calculation failed: ${fallbackError.message}`
+          )
         }
       }
 
@@ -173,13 +232,16 @@ class CachedOpenRouteClient {
   }
 
   // Method to check if a location is within cache precision of another
-  async isLocationCached(coordinate: Coordinate, params: IsochroneParams): Promise<boolean> {
+  async isLocationCached(
+    coordinate: Coordinate,
+    params: IsochroneParams
+  ): Promise<boolean> {
     const cacheKey: IsochroneCacheKey = {
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
       travelTimeMinutes: params.travelTimeMinutes,
       travelMode: params.travelMode,
-      precision: this.LOCATION_PRECISION
+      precision: this.LOCATION_PRECISION,
     }
 
     const result = await cache.getIsochroneCache(cacheKey)
@@ -187,7 +249,9 @@ class CachedOpenRouteClient {
   }
 
   // Method to warm cache with common locations
-  async warmCache(locations: Array<{ coordinate: Coordinate; params: IsochroneParams }>): Promise<void> {
+  async warmCache(
+    locations: Array<{ coordinate: Coordinate; params: IsochroneParams }>
+  ): Promise<void> {
     logger.info(`Warming cache with ${locations.length} locations`)
 
     const promises = locations.map(async ({ coordinate, params }) => {
@@ -198,7 +262,9 @@ class CachedOpenRouteClient {
           await this.calculateIsochrone(coordinate, params)
         }
       } catch (error) {
-        logger.warn(`Failed to warm cache for ${coordinate.latitude}, ${coordinate.longitude}: ${error.message}`)
+        logger.warn(
+          `Failed to warm cache for ${coordinate.latitude}, ${coordinate.longitude}: ${error.message}`
+        )
       }
     })
 
@@ -231,7 +297,7 @@ class CachedOpenRouteClient {
       origins,
       destinations,
       travelMode,
-      precision: this.LOCATION_PRECISION
+      precision: this.LOCATION_PRECISION,
     }
 
     try {
@@ -260,12 +326,22 @@ class CachedOpenRouteClient {
     const promises = matrixRequests.map(async (request) => {
       try {
         // Only warm if not already cached
-        const isCached = await this.isMatrixCached(request.origins, request.destinations, request.travelMode)
+        const isCached = await this.isMatrixCached(
+          request.origins,
+          request.destinations,
+          request.travelMode
+        )
         if (!isCached) {
-          await this.calculateTravelTimeMatrix(request.origins, request.destinations, request.travelMode)
+          await this.calculateTravelTimeMatrix(
+            request.origins,
+            request.destinations,
+            request.travelMode
+          )
         }
       } catch (error) {
-        logger.warn(`Failed to warm matrix cache for ${request.origins.length}×${request.destinations.length}: ${error.message}`)
+        logger.warn(
+          `Failed to warm matrix cache for ${request.origins.length}×${request.destinations.length}: ${error.message}`
+        )
       }
     })
 
@@ -277,7 +353,9 @@ class CachedOpenRouteClient {
    * Get cache statistics with multi-phase breakdown
    * @returns Promise<CacheStats & { multiPhaseHits: number; multiPhaseMisses: number }>
    */
-  async getExtendedCacheStats(): Promise<CacheStats & { multiPhaseHits: number; multiPhaseMisses: number }> {
+  async getExtendedCacheStats(): Promise<
+    CacheStats & { multiPhaseHits: number; multiPhaseMisses: number }
+  > {
     const baseStats = await this.getCacheStats()
 
     // For now, multi-phase stats are included in matrix stats
@@ -285,7 +363,7 @@ class CachedOpenRouteClient {
     return {
       ...baseStats,
       multiPhaseHits: baseStats.matrixHits,
-      multiPhaseMisses: baseStats.matrixMisses
+      multiPhaseMisses: baseStats.matrixMisses,
     }
   }
 }

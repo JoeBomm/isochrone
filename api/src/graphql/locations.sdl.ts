@@ -17,6 +17,11 @@ export const schema = gql`
     longitude: Float!
   }
 
+  input CoordinateInput {
+    latitude: Float!
+    longitude: Float!
+  }
+
   type Query {
     geocodeAddress(address: String!): Coordinate @skipAuth
   }

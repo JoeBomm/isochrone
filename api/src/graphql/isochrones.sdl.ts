@@ -7,20 +7,44 @@ export const schema = gql`
     individualIsochrones: [GeoJSONPolygon!]!
   }
 
-  type HypothesisPoint {
-    id: ID!
-    coordinate: Coordinate!
-    type: HypothesisPointType!
-    metadata: HypothesisPointMetadata
+  type OptimalLocationResult {
+    optimalPoints: [OptimalPoint!]!
+    debugPoints: [DebugPoint!]!
+    matrixApiCalls: Int!
+    totalHypothesisPoints: Int!
   }
 
-  enum HypothesisPointType {
+  type OptimalPoint {
+    id: ID!
+    coordinate: Coordinate!
+    travelTimeMetrics: TravelTimeMetrics!
+    rank: Int!
+  }
+
+  type DebugPoint {
+    id: ID!
+    coordinate: Coordinate!
+    type: DebugPointType!
+  }
+
+  enum DebugPointType {
     GEOGRAPHIC_CENTROID
     MEDIAN_COORDINATE
     PARTICIPANT_LOCATION
     PAIRWISE_MIDPOINT
-    COARSE_GRID
-    LOCAL_REFINEMENT
+    GRID_CELL
+    ANCHOR
+    GRID
+  }
+
+  type HypothesisPoint {
+    id: ID!
+    coordinate: Coordinate!
+    type: HypothesisPointType!
+    phase: AlgorithmPhase!
+    score: Float
+    travelTimeMetrics: TravelTimeMetrics
+    metadata: HypothesisPointMetadata
   }
 
   type HypothesisPointMetadata {
@@ -28,11 +52,32 @@ export const schema = gql`
     pairIds: [String!]
   }
 
-  type TravelTimeMatrix {
-    origins: [Location!]!
-    destinations: [HypothesisPoint!]!
-    travelTimes: [[Float!]!]!
-    travelMode: TravelMode!
+  enum HypothesisPointType {
+    GEOGRAPHIC_CENTROID
+    MEDIAN_COORDINATE
+    PARTICIPANT_LOCATION
+    PAIRWISE_MIDPOINT
+    COARSE_GRID_CELL
+    LOCAL_REFINEMENT_CELL
+  }
+
+  enum AlgorithmPhase {
+    ANCHOR
+    COARSE_GRID
+    LOCAL_REFINEMENT
+  }
+
+  type TravelTimeMetrics {
+    maxTravelTime: Float! # For Minimax goal
+    averageTravelTime: Float! # For Min goal
+    variance: Float! # For Mean goal
+    totalTravelTime: Float!
+  }
+
+  enum OptimizationGoal {
+    MINIMAX # Minimize maximum travel time
+    MEAN # Minimize variance (equalize travel times)
+    MIN # Minimize total travel time
   }
 
   enum TravelMode {
@@ -41,37 +86,33 @@ export const schema = gql`
     FOOT_WALKING
   }
 
-  enum OptimizationMode {
-    BASELINE
-    COARSE_GRID
-    FULL_REFINEMENT
-  }
-
-  input CoarseGridConfigInput {
-    enabled: Boolean!
-    paddingKm: Float!
-    gridResolution: Int!
-  }
-
-  input LocalRefinementConfigInput {
-    enabled: Boolean!
-    topK: Int!
-    refinementRadiusKm: Float!
-    fineGridResolution: Int!
-  }
-
-  input OptimizationConfigInput {
-    mode: OptimizationMode!
-    coarseGridConfig: CoarseGridConfigInput
-    localRefinementConfig: LocalRefinementConfigInput
-  }
-
   type Mutation {
+    findOptimalLocations(
+      locations: [LocationInput!]!
+      travelMode: TravelMode!
+      optimizationGoal: OptimizationGoal = MINIMAX
+      topM: Int = 5 # DEFAULT_TOP_M from constants
+      gridSize: Int = 5 # DEFAULT_GRID_SIZE from constants
+      deduplicationThreshold: Float = 5000.0 # DEFAULT_DEDUPLICATION_THRESHOLD from constants
+    ): OptimalLocationResult! @skipAuth
+
+    generateIsochrone(
+      pointId: ID!
+      travelTimeMinutes: Int!
+      travelMode: TravelMode!
+    ): GeoJSONPolygon! @skipAuth
+
     calculateMinimaxCenter(
       locations: [LocationInput!]!
       travelMode: TravelMode!
       bufferTimeMinutes: Int!
-      optimizationConfig: OptimizationConfigInput
     ): IsochroneResult! @skipAuth
+
+    calculateIsochrone(
+      pointId: ID!
+      coordinate: CoordinateInput!
+      travelTimeMinutes: Int!
+      travelMode: TravelMode!
+    ): GeoJSONPolygon! @skipAuth
   }
 `

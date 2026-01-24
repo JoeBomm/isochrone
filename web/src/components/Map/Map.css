@@ -1,0 +1,117 @@
+/* Map component styles for optimal points and debug visualization */
+
+.map-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+/* Optimal point markers - highest z-index */
+.optimal-point-marker {
+  z-index: 1000 !important;
+}
+
+.optimal-point-marker.selected {
+  z-index: 1001 !important;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Debug point markers - medium z-index */
+.debug-point-marker {
+  z-index: 100 !important;
+  opacity: 0.8;
+}
+
+.debug-point-marker.anchor-marker {
+  z-index: 101 !important;
+}
+
+.debug-point-marker.grid-marker {
+  z-index: 100 !important;
+}
+
+/* Hypothesis point markers - lower z-index */
+.hypothesis-marker {
+  z-index: 50 !important;
+  opacity: 0.7;
+}
+
+.hypothesis-marker.optimal-point {
+  z-index: 1000 !important;
+  opacity: 1;
+}
+
+.hypothesis-marker.debug-point {
+  z-index: 100 !important;
+}
+
+/* Location markers - base z-index */
+.custom-marker {
+  z-index: 200 !important;
+}
+
+/* Center point marker */
+.center-marker {
+  z-index: 300 !important;
+}
+
+/* Popup styles */
+.optimal-point-popup .leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.optimal-point-popup.selected .leaflet-popup-content-wrapper {
+  border: 2px solid #10b981;
+}
+
+.debug-point-popup .leaflet-popup-content-wrapper {
+  border-radius: 6px;
+  border: 1px solid #fbbf24;
+  background-color: #fffbeb;
+}
+
+.hypothesis-popup.developer-mode .leaflet-popup-content-wrapper {
+  border: 1px solid #3b82f6;
+  background-color: #eff6ff;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .optimal-point-marker {
+    transform: scale(0.9);
+  }
+
+  .debug-point-marker {
+    transform: scale(0.8);
+  }
+}
+
+/* Accessibility improvements */
+.optimal-point-marker:focus,
+.debug-point-marker:focus,
+.hypothesis-marker:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .optimal-point-marker,
+  .debug-point-marker,
+  .hypothesis-marker {
+    filter: contrast(1.2);
+  }
+}

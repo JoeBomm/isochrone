@@ -71,7 +71,7 @@ jest.mock('src/lib/matrix', () => ({
         destinations: Array.from({ length: 32 }, (_, i) => ({
           id: `dest_${i}`,
           coordinate: { latitude: 40.715 + (i * 0.001), longitude: -74.005 + (i * 0.001) },
-          type: i < 8 ? 'PHASE_0' : 'COARSE_GRID',
+          type: i < 8 ? 'GEOGRAPHIC_CENTROID' : 'COARSE_GRID_CELL',
           metadata: null
         })),
         travelTimes: [
@@ -116,7 +116,7 @@ jest.mock('src/lib/matrix', () => ({
       totalHypothesisPoints: Array.from({ length: 32 }, (_, i) => ({
         id: `dest_${i}`,
         coordinate: { latitude: 40.715 + (i * 0.001), longitude: -74.005 + (i * 0.001) },
-        type: i < 8 ? 'PHASE_0' : 'COARSE_GRID',
+        type: i < 8 ? 'GEOGRAPHIC_CENTROID' : 'COARSE_GRID_CELL',
         metadata: null
       }))
     }),
@@ -158,7 +158,7 @@ jest.mock('src/lib/matrix', () => ({
       optimalHypothesisPoint: {
         id: 'dest_5',
         coordinate: { latitude: 40.715, longitude: -74.005 },
-        type: 'COARSE_GRID',
+        type: 'COARSE_GRID_CELL',
         metadata: null
       }
     }),
@@ -496,7 +496,7 @@ describe('Multi-Phase Optimization Integration Tests', () => {
         optimalHypothesisPoint: {
           id: 'dest_8',
           coordinate: { latitude: 40.715, longitude: -74.005 },
-          type: 'COARSE_GRID',
+          type: 'COARSE_GRID_CELL',
           metadata: null
         }
       })
