@@ -29,6 +29,8 @@ interface MainLayoutProps {
   optimalPoints?: OptimalPoint[]
   debugPoints?: DebugPoint[]
   isochrones?: globalThis.Map<string, GeoJSON.Polygon>
+  activeIsochronePointId?: string | null
+  selectedOptimalPointId?: string | null
   showDebugPoints?: boolean
   showAnchors?: boolean
   showGrid?: boolean
@@ -41,13 +43,17 @@ const MainLayout = ({
   optimalPoints = [],
   debugPoints = [],
   isochrones = new globalThis.Map(),
+  activeIsochronePointId = null,
+  selectedOptimalPointId = null,
   showDebugPoints = false,
   showAnchors = false,
   showGrid = false,
   onOptimalPointClick,
 }: MainLayoutProps) => {
-  // Convert isochrones Map to array for Map component
-  const isochronePolygons = Array.from(isochrones.values())
+  // Convert isochrones Map to array for Map component, showing only the active one
+  const isochronePolygons = activeIsochronePointId && isochrones.has(activeIsochronePointId)
+    ? [isochrones.get(activeIsochronePointId)!]
+    : []
 
   // Convert optimal points to format expected by Map component
   const mapOptimalPoints = optimalPoints.map((point) => ({
@@ -131,6 +137,9 @@ const MainLayout = ({
             showHypothesisPoints={true} // Always show points when they exist
             onHypothesisPointClick={handlePointClick}
             isochrones={isochronePolygons}
+            optimalPoints={optimalPoints}
+            selectedOptimalPointId={selectedOptimalPointId}
+            onOptimalPointClick={onOptimalPointClick}
           />
         </MapErrorBoundary>
       </div>

@@ -17,7 +17,7 @@ describe('OptimizationGoals', () => {
 
     expect(screen.getByRole('radio', { name: /Minimax/ })).toBeInTheDocument()
     expect(
-      screen.getByRole('radio', { name: /Mean \(Equalize\)/ })
+      screen.getByRole('radio', { name: /Minimize Variance/ })
     ).toBeInTheDocument()
     expect(
       screen.getByRole('radio', { name: /Minimize Total/ })
@@ -34,11 +34,15 @@ describe('OptimizationGoals', () => {
       />
     )
 
-    // Click on the Mean option
-    const meanOption = screen.getByRole('radio', { name: /Mean \(Equalize\)/ })
-    fireEvent.click(meanOption)
+    // Click on the Minimize Variance option
+    const varianceOption = screen.getByRole('radio', {
+      name: /Minimize Variance/,
+    })
+    fireEvent.click(varianceOption)
 
-    expect(mockOnGoalChange).toHaveBeenCalledWith(OptimizationGoal.MEAN)
+    expect(mockOnGoalChange).toHaveBeenCalledWith(
+      OptimizationGoal.MINIMIZE_VARIANCE
+    )
   })
 
   it('shows the correct selected goal', () => {
@@ -46,13 +50,15 @@ describe('OptimizationGoals', () => {
 
     render(
       <OptimizationGoals
-        selectedGoal={OptimizationGoal.MEAN}
+        selectedGoal={OptimizationGoal.MINIMIZE_VARIANCE}
         onGoalChange={mockOnGoalChange}
       />
     )
 
-    const meanRadio = screen.getByRole('radio', { name: /Mean \(Equalize\)/ })
-    expect(meanRadio).toBeChecked()
+    const varianceRadio = screen.getByRole('radio', {
+      name: /Minimize Variance/,
+    })
+    expect(varianceRadio).toBeChecked()
   })
 
   it('disables all options when disabled prop is true', () => {

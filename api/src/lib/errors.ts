@@ -28,7 +28,6 @@ export enum ErrorCode {
   OPTIMIZATION_FALLBACK_FAILED = 'OPTIMIZATION_FALLBACK_FAILED',
 
   // Configuration validation errors
-  INVALID_OPTIMIZATION_CONFIG = 'INVALID_OPTIMIZATION_CONFIG',
   INVALID_GRID_RESOLUTION = 'INVALID_GRID_RESOLUTION',
   INVALID_REFINEMENT_RADIUS = 'INVALID_REFINEMENT_RADIUS',
   INVALID_TOP_K_SELECTION = 'INVALID_TOP_K_SELECTION',
@@ -277,18 +276,7 @@ export const createOptimizationFallbackError = (
   })
 }
 
-export const createOptimizationConfigError = (
-  field: string,
-  value: any,
-  details?: string
-): AppError => {
-  return new AppError({
-    code: ErrorCode.INVALID_OPTIMIZATION_CONFIG,
-    message: `Invalid optimization configuration for ${field}: ${details || 'Invalid value'}`,
-    userMessage: `Invalid optimization settings. Please check your configuration and try again.`,
-    details: { field, value, configError: details },
-  })
-}
+
 
 export const createGridResolutionError = (
   resolution: number,
@@ -488,11 +476,6 @@ export const handleResolverError = (
       throw createMultiPhaseOptimizationError('unknown', error.message, error)
     } else if (message.includes('optimization fallback')) {
       throw createOptimizationFallbackError(error.message, error)
-    } else if (
-      message.includes('invalid optimization') ||
-      message.includes('optimization config')
-    ) {
-      throw createOptimizationConfigError('unknown', 'unknown', error.message)
     } else if (message.includes('grid resolution')) {
       throw createGridResolutionError(0, error.message)
     } else if (message.includes('refinement radius')) {
@@ -596,11 +579,6 @@ export const getUserFriendlyMessage = (error: unknown): string => {
       return 'Advanced optimization failed. Falling back to basic optimization method.'
     } else if (message.includes('optimization fallback')) {
       return 'Unable to calculate optimal meeting point. Please check your locations and try again.'
-    } else if (
-      message.includes('invalid optimization') ||
-      message.includes('optimization config')
-    ) {
-      return 'Invalid optimization settings. Please check your configuration and try again.'
     } else if (message.includes('grid resolution')) {
       return 'Grid resolution must be within reasonable bounds for performance. Please adjust your settings.'
     } else if (message.includes('refinement radius')) {

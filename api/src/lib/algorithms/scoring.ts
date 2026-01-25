@@ -10,7 +10,7 @@
  * to support future expansion for round-trip calculations.
  */
 
-import type { HypothesisPoint, Coordinate } from 'types/graphql'
+import type { HypothesisPoint } from 'types/graphql'
 
 import { logger } from '../logger'
 
@@ -53,10 +53,10 @@ export interface ScoredHypothesisPoint extends HypothesisPoint {
 export enum OptimizationGoal {
   /** Minimax: Minimize the maximum travel time to N for any location in S */
   MINIMAX = 'MINIMAX',
-  /** Mean: Find location N such that travel times for all S are as equal as possible (minimize variance) */
-  MEAN = 'MEAN',
-  /** Min: Find location N such that the total sum of travel times for all S locations is minimized */
-  MIN = 'MIN',
+  /** Minimize Variance: Find location N such that travel times for all S are as equal as possible (minimize variance) */
+  MINIMIZE_VARIANCE = 'MINIMIZE_VARIANCE',
+  /** Minimize Total: Find location N such that the total sum of travel times for all S locations is minimized */
+  MINIMIZE_TOTAL = 'MINIMIZE_TOTAL',
 }
 
 /**
@@ -65,7 +65,7 @@ export enum OptimizationGoal {
 export interface ScoringConfig {
   /** Selected optimization goal */
   optimizationGoal: OptimizationGoal
-  /** Whether to include variance calculation (required for MEAN) */
+  /** Whether to include variance calculation (required for MINIMIZE_VARIANCE) */
   includeVariance?: boolean
 }
 
@@ -193,7 +193,7 @@ export class TravelTimeScoringService implements ScoringService {
           // Calculate travel time metrics
           const includeVariance =
             config.includeVariance ||
-            config.optimizationGoal === OptimizationGoal.MEAN
+            config.optimizationGoal === OptimizationGoal.MINIMIZE_VARIANCE
           const metrics = this.calculateTravelTimeMetrics(
             validTravelTimes,
             includeVariance
@@ -342,17 +342,19 @@ export class TravelTimeScoringService implements ScoringService {
           // Score based on maximum travel time (Minimax goal)
           return metrics.maxTravelTime
 
-        case OptimizationGoal.MEAN:
+        case OptimizationGoal.MINIMIZE_VARIANCE:
           // Score based on variance (fairness optimization)
           if (
             typeof metrics.variance !== 'number' ||
             !Number.isFinite(metrics.variance)
           ) {
-            throw new Error('Variance not calculated for MEAN goal')
+            throw new Error(
+              'Variance not calculated for MINIMIZE_VARIANCE goal'
+            )
           }
           return metrics.variance
 
-        case OptimizationGoal.MIN:
+        case OptimizationGoal.MINIMIZE_TOTAL:
           // Score based on total travel time
           return metrics.totalTravelTime
 

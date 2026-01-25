@@ -69,15 +69,15 @@ export const schema = gql`
 
   type TravelTimeMetrics {
     maxTravelTime: Float! # For Minimax goal
-    averageTravelTime: Float! # For Min goal
-    variance: Float! # For Mean goal
-    totalTravelTime: Float!
+    averageTravelTime: Float! # For reference
+    variance: Float! # For Minimize Variance goal
+    totalTravelTime: Float! # For Minimize Total goal
   }
 
   enum OptimizationGoal {
     MINIMAX # Minimize maximum travel time
-    MEAN # Minimize variance (equalize travel times)
-    MIN # Minimize total travel time
+    MINIMIZE_VARIANCE # Minimize variance (equalize travel times)
+    MINIMIZE_TOTAL # Minimize total travel time
   }
 
   enum TravelMode {

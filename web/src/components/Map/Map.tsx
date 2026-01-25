@@ -322,9 +322,9 @@ const Map = ({
         <div class="p-3 min-w-[240px]">
           <h3 class="font-semibold text-gray-900 mb-2">Visualization Area</h3>
           <div class="space-y-1 text-sm text-gray-600">
-            <p>This area shows locations accessible within the configured slack time from the optimal meeting point.</p>
+            <p>This area shows locations accessible within the configured travel time range from the optimal meeting point.</p>
             <p class="text-xs text-gray-500 mt-2">
-              <strong>How it works:</strong> The minimax algorithm finds the point that minimizes maximum travel time, then generates this visualization area using the slack time radius.
+              <strong>How it works:</strong> The minimax algorithm finds the point that minimizes maximum travel time, then generates this visualization area using the travel time range radius.
             </p>
           </div>
         </div>
@@ -1112,6 +1112,7 @@ const createOptimalPointIcon = (
   point: OptimalPoint,
   isSelected: boolean = false
 ) => {
+  return
   const size = isSelected ? 32 : 28
   const color = isSelected ? '#10b981' : '#059669'
   const strokeColor = isSelected ? '#ffffff' : '#ffffff'

@@ -76,11 +76,11 @@ describe('Optimization Goal Debug Test', () => {
     expect(result.optimalPoints.length).toBeGreaterThan(0)
   }, 30000)
 
-  it('should handle MEAN optimization goal', async () => {
+  it('should handle MINIMIZE_VARIANCE optimization goal', async () => {
     const result = await findOptimalLocationsResolver({
       locations: michiganAddresses,
       travelMode: 'DRIVING_CAR',
-      optimizationGoal: 'MEAN',
+      optimizationGoal: 'MINIMIZE_VARIANCE',
       topM: 5,
       gridSize: 5,
       deduplicationThreshold: 100,
@@ -91,11 +91,11 @@ describe('Optimization Goal Debug Test', () => {
     expect(result.optimalPoints.length).toBeGreaterThan(0)
   }, 30000)
 
-  it('should handle MIN optimization goal', async () => {
+  it('should handle MINIMIZE_TOTAL optimization goal', async () => {
     const result = await findOptimalLocationsResolver({
       locations: michiganAddresses,
       travelMode: 'DRIVING_CAR',
-      optimizationGoal: 'MIN',
+      optimizationGoal: 'MINIMIZE_TOTAL',
       topM: 5,
       gridSize: 5,
       deduplicationThreshold: 100,
@@ -108,11 +108,11 @@ describe('Optimization Goal Debug Test', () => {
 
   // Test sequential calls to verify no state corruption
   it('should handle sequential calls without state corruption', async () => {
-    // First call with MEAN (which was failing)
+    // First call with MINIMIZE_VARIANCE (which was failing)
     const result1 = await findOptimalLocationsResolver({
       locations: michiganAddresses,
       travelMode: 'DRIVING_CAR',
-      optimizationGoal: 'MEAN',
+      optimizationGoal: 'MINIMIZE_VARIANCE',
       topM: 5,
       gridSize: 5,
       deduplicationThreshold: 100,
@@ -121,7 +121,7 @@ describe('Optimization Goal Debug Test', () => {
     expect(result1).toBeDefined()
     expect(result1.optimalPoints.length).toBeGreaterThan(0)
 
-    // Second call with MINIMAX (which should work even after MEAN fails)
+    // Second call with MINIMAX (which should work even after MINIMIZE_VARIANCE fails)
     const result2 = await findOptimalLocationsResolver({
       locations: michiganAddresses,
       travelMode: 'DRIVING_CAR',
@@ -134,11 +134,11 @@ describe('Optimization Goal Debug Test', () => {
     expect(result2).toBeDefined()
     expect(result2.optimalPoints.length).toBeGreaterThan(0)
 
-    // Third call with MIN
+    // Third call with MINIMIZE_TOTAL
     const result3 = await findOptimalLocationsResolver({
       locations: michiganAddresses,
       travelMode: 'DRIVING_CAR',
-      optimizationGoal: 'MIN',
+      optimizationGoal: 'MINIMIZE_TOTAL',
       topM: 5,
       gridSize: 5,
       deduplicationThreshold: 100,

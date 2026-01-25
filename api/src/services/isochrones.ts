@@ -31,8 +31,6 @@ import {
   createTooManyLocationsError,
   createBufferTimeError,
   createTravelModeError,
-  AppError,
-  ErrorCode,
 } from 'src/lib/errors'
 import {
   geometryService,
@@ -40,17 +38,6 @@ import {
   type Location,
 } from 'src/lib/geometry'
 import { logger } from 'src/lib/logger'
-import { matrixService } from 'src/lib/matrix'
-import {
-  DEFAULT_OPTIMIZATION_CONFIG,
-  OptimizationConfig,
-  validateOptimizationConfig,
-  validateGeographicConstraints,
-} from 'src/lib/optimization'
-
-// Re-export optimization types for backward compatibility
-export type { OptimizationConfig, OptimizationMode } from 'src/lib/optimization'
-export { DEFAULT_OPTIMIZATION_CONFIG } from 'src/lib/optimization'
 
 /**
  * Validate that a numeric value is finite and non-negative
@@ -174,7 +161,7 @@ const safeAverage = (values: number[], fallback: number = 0): number => {
 
 /**
  * Generate fallback score for each optimization goal when no valid travel times remain
- * @param goal The optimization goal (MINIMAX, MEAN, MIN)
+ * @param goal The optimization goal (MINIMAX, MINIMIZE_VARIANCE, MINIMIZE_TOTAL)
  * @param validTravelTimes Array of valid travel times (may be empty)
  * @returns Appropriate fallback score based on the optimization goal
  */
@@ -190,23 +177,25 @@ const getFallbackScore = (
 
   // Provide goal-specific fallback logic when we have some valid travel times
   switch (goal) {
-    case 'MINIMAX':
+    case 'MINIMAX': {
       // For MINIMAX, use the maximum travel time from available valid times
       const maxTime = Math.max(...validTravelTimes)
       logger.debug(`MINIMAX fallback score: ${maxTime}`)
       return maxTime
+    }
 
-    case 'MEAN':
-      // For MEAN (variance-based), return 0 when we can't calculate variance properly
-      // This represents no variance, which is optimal for the MEAN goal
-      logger.debug('MEAN fallback score: 0 (no variance)')
+    case 'MINIMIZE_VARIANCE':
+      // For MINIMIZE_VARIANCE (variance-based), return 0 when we can't calculate variance properly
+      // This represents no variance, which is optimal for the MINIMIZE_VARIANCE goal
+      logger.debug('MINIMIZE_VARIANCE fallback score: 0 (no variance)')
       return 0
 
-    case 'MIN':
-      // For MIN (total travel time), sum all available valid travel times
+    case 'MINIMIZE_TOTAL': {
+      // For MINIMIZE_TOTAL (total travel time), sum all available valid travel times
       const totalTime = validTravelTimes.reduce((sum, time) => sum + time, 0)
-      logger.debug(`MIN fallback score: ${totalTime}`)
+      logger.debug(`MINIMIZE_TOTAL fallback score: ${totalTime}`)
       return totalTime
+    }
 
     default:
       // Default fallback to high penalty score for unknown goals
@@ -321,121 +310,6 @@ export const generateBaselineHypothesisPoints = (
 }
 
 /**
- * Generate multi-phase hypothesis points based on optimization configuration
- * @param locations Array of participant locations
- * @param config Optimization configuration
- * @returns Array of hypothesis points from all enabled phases
- * @throws Error if hypothesis generation fails
- */
-export const generateMultiPhaseHypothesisPoints = (
-  locations: Location[],
-  config: OptimizationConfig = DEFAULT_OPTIMIZATION_CONFIG
-): HypothesisPoint[] => {
-  if (!locations || locations.length === 0) {
-    throw new Error(
-      'No locations provided for multi-phase hypothesis point generation'
-    )
-  }
-
-  try {
-    const allHypothesisPoints: HypothesisPoint[] = []
-
-    // Phase 0: Always generate baseline hypothesis points
-    logger.info('Phase 0: Generating baseline hypothesis points')
-    const baselinePoints = generateBaselineHypothesisPoints(locations)
-    allHypothesisPoints.push(...baselinePoints)
-
-    // Phase 1: Coarse grid generation (if enabled)
-    if (config.coarseGridConfig?.enabled && config.mode !== 'BASELINE') {
-      logger.info('Phase 1: Generating coarse grid hypothesis points')
-      const coarseGridPoints = generateCoarseGridHypothesisPoints(
-        locations,
-        config.coarseGridConfig
-      )
-      allHypothesisPoints.push(...coarseGridPoints)
-    }
-
-    // Phase 2: Local refinement (if enabled and we have candidates)
-    if (
-      config.localRefinementConfig?.enabled &&
-      config.mode === 'FULL_REFINEMENT'
-    ) {
-      logger.info(
-        'Phase 2: Local refinement will be performed after initial matrix evaluation'
-      )
-      // Note: Local refinement requires matrix evaluation results, so it's handled separately
-    }
-
-    // Remove duplicates and validate all points
-    const uniquePoints = removeDuplicateHypothesisPoints(allHypothesisPoints)
-    const validPoints = uniquePoints.filter((point) =>
-      geometryService.validateCoordinateBounds(point.coordinate)
-    )
-
-    if (validPoints.length === 0) {
-      throw new Error(
-        'No valid hypothesis points generated from multi-phase generation'
-      )
-    }
-
-    logger.info(
-      `Multi-phase generation complete: ${validPoints.length} unique valid hypothesis points`
-    )
-    return validPoints
-  } catch (error) {
-    throw new Error(
-      `Multi-phase hypothesis point generation failed: ${error.message}`
-    )
-  }
-}
-
-/**
- * Generate coarse grid hypothesis points (Phase 1)
- * @param locations Array of participant locations
- * @param config Coarse grid configuration
- * @returns Array of coarse grid hypothesis points
- * @private
- */
-const generateCoarseGridHypothesisPoints = (
-  locations: Location[],
-  config: { paddingKm: number; gridResolution: number }
-): HypothesisPoint[] => {
-  try {
-    // Calculate bounding box with padding
-    const boundingBox = geometryService.calculateBoundingBox(
-      locations,
-      config.paddingKm
-    )
-
-    // Generate coarse grid points
-    const gridCoordinates = geometryService.generateCoarseGridPoints(
-      boundingBox,
-      config.gridResolution
-    )
-
-    // Convert to hypothesis points
-    const coarseGridPoints: HypothesisPoint[] = gridCoordinates.map(
-      (coordinate, index) => ({
-        id: `coarse_grid_${index}`,
-        coordinate,
-        type: 'COARSE_GRID_CELL' as HypothesisPointType,
-        phase: 'COARSE_GRID' as AlgorithmPhase,
-        metadata: null,
-      })
-    )
-
-    logger.info(
-      `Generated ${coarseGridPoints.length} coarse grid hypothesis points`
-    )
-    return coarseGridPoints
-  } catch (error) {
-    throw new Error(
-      `Coarse grid hypothesis generation failed: ${error.message}`
-    )
-  }
-}
-
-/**
  * Generate local refinement hypothesis points (Phase 2)
  * @param candidates Array of candidate points with travel time results
  * @param config Local refinement configuration
@@ -481,50 +355,13 @@ export const generateLocalRefinementHypothesisPoints = (
 }
 
 /**
- * Remove duplicate hypothesis points that are very close to each other
- * @param points Array of hypothesis points
- * @returns Array of unique hypothesis points
- * @private
- */
-const removeDuplicateHypothesisPoints = (
-  points: HypothesisPoint[]
-): HypothesisPoint[] => {
-  const uniquePoints: HypothesisPoint[] = []
-  const thresholdDegrees = 0.001 // ~100m threshold
-
-  for (const point of points) {
-    let isDuplicate = false
-
-    for (const existingPoint of uniquePoints) {
-      const latDiff = Math.abs(
-        point.coordinate.latitude - existingPoint.coordinate.latitude
-      )
-      const lngDiff = Math.abs(
-        point.coordinate.longitude - existingPoint.coordinate.longitude
-      )
-
-      if (latDiff < thresholdDegrees && lngDiff < thresholdDegrees) {
-        isDuplicate = true
-        break
-      }
-    }
-
-    if (!isDuplicate) {
-      uniquePoints.push(point)
-    }
-  }
-
-  return uniquePoints
-}
-
-/**
  * Calculate optimal meeting points using simplified two-phase algorithm (Cost-controlled - no automatic isochrones)
  * Phase 1: Generate hypothesis points (anchors + grid)
  * Phase 2: Evaluate all points with single Matrix API call and select optimal points
  * Requirements: 1.2, 1.4 - Single Matrix API call for hypothesis evaluation
  * @param locations Array of participant locations
  * @param travelMode Travel mode for matrix calculations
- * @param optimizationGoal Optimization goal (MINIMAX, MEAN, MIN)
+ * @param optimizationGoal Optimization goal (MINIMAX, MINIMIZE_VARIANCE, MINIMIZE_TOTAL)
  * @param topM Number of top optimal points to return
  * @param gridSize Grid dimensions for bounding box grid (default 5x5)
  * @param deduplicationThreshold Distance threshold in meters for point merging
@@ -865,14 +702,14 @@ const scoreHypothesisPointsSimplified = (
             case 'MINIMAX':
               score = maxTravelTime
               break
-            case 'MEAN':
+            case 'MINIMIZE_VARIANCE':
               score = variance
               // Special handling for single travel time (variance should be 0)
               if (sanitizedTravelTimes.length === 1) {
                 score = 0
               }
               break
-            case 'MIN':
+            case 'MINIMIZE_TOTAL':
               score = totalTravelTime
               break
             default:
@@ -937,639 +774,6 @@ const scoreHypothesisPointsSimplified = (
     throw new Error(`Hypothesis point scoring failed: ${error.message}`)
   }
 }
-
-/**
- * Calculate minimax center using multi-phase optimization pipeline (Cost-controlled - no automatic isochrones)
- * Integrates hypothesis generation, batched matrix evaluation, and optimization
- * Requirements: 3.1 - NO automatic Isochrone API calls during hypothesis generation
- * @param locations Array of participant locations
- * @param travelMode Travel mode for matrix calculations
- * @param bufferTimeMinutes Buffer time for potential isochrone visualization (not automatically calculated)
- * @param config Optimization configuration
- * @returns IsochroneResult with optimal center point but no automatic fairMeetingArea
- * @throws Error if calculation fails at any phase
- */
-const calculateMultiPhaseMinimaxCenter = async (
-  locations: Location[],
-  travelMode: string,
-  bufferTimeMinutes: number,
-  config: OptimizationConfig
-): Promise<{
-  centerPoint: Coordinate
-  fairMeetingArea: GeoJSON.Polygon
-  individualIsochrones: GeoJSON.Polygon[]
-}> => {
-  try {
-    // Step 1: Generate Phase 0 (baseline) hypothesis points (Requirements 4.1.1)
-    logger.info('Step 1: Generating Phase 0 (baseline) hypothesis points')
-    const phase0Points = generateBaselineHypothesisPoints(locations)
-    logger.info(`Generated ${phase0Points.length} Phase 0 hypothesis points`)
-
-    // Step 2: Generate Phase 1 (coarse grid) hypothesis points if enabled (Requirements 4.1.2)
-    let phase1Points: HypothesisPoint[] = []
-    if (config.coarseGridConfig?.enabled && config.mode !== 'BASELINE') {
-      logger.info('Step 2: Generating Phase 1 (coarse grid) hypothesis points')
-      phase1Points = generateCoarseGridHypothesisPoints(
-        locations,
-        config.coarseGridConfig
-      )
-      logger.info(`Generated ${phase1Points.length} Phase 1 hypothesis points`)
-    } else {
-      logger.info(
-        'Step 2: Skipping Phase 1 (coarse grid disabled or BASELINE mode)'
-      )
-    }
-
-    // Step 3: Evaluate batched matrix for Phase 0+1 (Requirements 4.2.1)
-    logger.info('Step 3: Evaluating batched matrix for Phase 0+1')
-    const origins = locations.map((loc) => loc.coordinate)
-
-    const batchedResult = await matrixService.evaluateBatchedMatrix(
-      origins,
-      phase0Points,
-      phase1Points,
-      travelMode as TravelMode
-    )
-    logger.info(
-      `Batched matrix evaluation complete: ${batchedResult.totalHypothesisPoints.length} total points evaluated, ${batchedResult.apiCallCount} API calls`
-    )
-
-    // Step 4: Generate Phase 2 (local refinement) points if enabled (Requirements 4.1.3)
-    let phase2Result:
-      | { hypothesisPoints: HypothesisPoint[]; matrix: TravelTimeMatrix }
-      | undefined = undefined
-    if (
-      config.localRefinementConfig?.enabled &&
-      config.mode === 'FULL_REFINEMENT'
-    ) {
-      logger.info(
-        'Step 4: Generating Phase 2 (local refinement) hypothesis points'
-      )
-
-      try {
-        // Find top candidates from Phase 0+1 results for refinement
-        const topCandidates = findTopCandidatesForRefinement(
-          batchedResult,
-          config.localRefinementConfig.topK
-        )
-
-        if (topCandidates.length > 0) {
-          // Generate local refinement points around top candidates
-          const phase2Points = generateLocalRefinementHypothesisPoints(
-            topCandidates,
-            config.localRefinementConfig
-          )
-
-          if (phase2Points.length > 0) {
-            logger.info(
-              `Generated ${phase2Points.length} Phase 2 hypothesis points`
-            )
-
-            // For now, treat all Phase 2 points as a single local grid group
-            // Future enhancement: support multiple local grids based on spatial clustering
-            const localGridGroups = [phase2Points]
-
-            // Evaluate Phase 2 matrix separately (Requirements 1.5)
-            try {
-              const localGridResults =
-                await matrixService.evaluateLocalGridsSeparately(
-                  origins,
-                  localGridGroups,
-                  travelMode as TravelMode
-                )
-
-              if (localGridResults.length > 0) {
-                // Combine local grid results into single Phase 2 result
-                phase2Result =
-                  matrixService.combineLocalGridResults(localGridResults)
-                logger.info(
-                  `Phase 2 matrix evaluation complete: ${phase2Result.hypothesisPoints.length} points, ${matrixService.getApiCallCount()} total API calls`
-                )
-              } else {
-                logger.warn(
-                  'No local grid results returned, continuing without Phase 2'
-                )
-                phase2Result = undefined
-              }
-            } catch (phase2Error) {
-              logger.warn(
-                'Phase 2 matrix evaluation failed, continuing without local refinement:',
-                phase2Error
-              )
-              // Graceful degradation: continue without Phase 2 results
-              phase2Result = undefined
-            }
-          } else {
-            logger.info(
-              'No Phase 2 points generated, skipping Phase 2 matrix evaluation'
-            )
-          }
-        } else {
-          logger.info(
-            'No top candidates found for refinement, skipping Phase 2'
-          )
-        }
-      } catch (phase2GenerationError) {
-        logger.warn(
-          'Phase 2 hypothesis generation failed, continuing without local refinement:',
-          phase2GenerationError
-        )
-        // Graceful degradation: continue without Phase 2 results
-        phase2Result = undefined
-      }
-    } else {
-      logger.info(
-        'Step 4: Skipping Phase 2 (local refinement disabled or not FULL_REFINEMENT mode)'
-      )
-    }
-
-    // Step 5: Find multi-phase minimax optimal point (Requirements 4.3)
-    logger.info('Step 5: Finding multi-phase minimax optimal point')
-    let optimalResult
-    let allHypothesisPoints: HypothesisPoint[]
-
-    try {
-      const multiPhaseResult = matrixService.findMultiPhaseMinimaxOptimal(
-        batchedResult,
-        phase2Result
-      )
-
-      // Combine all hypothesis points for indexing
-      allHypothesisPoints = [...batchedResult.totalHypothesisPoints]
-      if (phase2Result) {
-        allHypothesisPoints.push(...phase2Result.hypothesisPoints)
-      }
-
-      optimalResult = {
-        optimalIndex: multiPhaseResult.optimalIndex,
-        maxTravelTime: multiPhaseResult.maxTravelTime,
-        averageTravelTime: multiPhaseResult.averageTravelTime,
-      }
-
-      logger.info(
-        `Multi-phase optimal point found: index ${optimalResult.optimalIndex}, max time ${optimalResult.maxTravelTime}min, phase ${multiPhaseResult.optimalPhase}`
-      )
-    } catch (error) {
-      logger.error('Multi-phase minimax optimization failed:', error)
-
-      // Fallback to geographic centroid with error handling (Requirements 4.5, 9.1, 9.2)
-      return await handleOptimizationFallback(
-        locations,
-        travelMode,
-        bufferTimeMinutes,
-        error
-      )
-    }
-
-    // Get the optimal hypothesis point
-    const optimalHypothesisPoint =
-      allHypothesisPoints[optimalResult.optimalIndex]
-    if (!optimalHypothesisPoint) {
-      throw new Error(`Invalid optimal index: ${optimalResult.optimalIndex}`)
-    }
-
-    const centerPoint = optimalHypothesisPoint.coordinate
-    logger.info(
-      `Selected optimal meeting point: ${centerPoint.latitude}, ${centerPoint.longitude} (${optimalHypothesisPoint.type})`
-    )
-
-    // COST-CONTROLLED: Do NOT generate fairMeetingArea automatically (Requirements 3.1)
-    // Return placeholder polygon that can be calculated on-demand
-    logger.info(
-      'Cost-controlled mode: Skipping automatic fair meeting area isochrone generation'
-    )
-    const placeholderFairMeetingArea: GeoJSON.Polygon = {
-      type: 'Polygon',
-      coordinates: [
-        [
-          [centerPoint.longitude, centerPoint.latitude],
-          [centerPoint.longitude, centerPoint.latitude],
-          [centerPoint.longitude, centerPoint.latitude],
-          [centerPoint.longitude, centerPoint.latitude],
-        ],
-      ],
-    }
-
-    // Return the result without automatic isochrone calculation
-    const result = {
-      centerPoint,
-      fairMeetingArea: placeholderFairMeetingArea,
-      individualIsochrones: [], // Minimax approach doesn't use individual isochrones
-    }
-
-    logger.info(
-      `Multi-phase minimax center calculation completed successfully (cost-controlled): max travel time ${optimalResult.maxTravelTime}min, avg travel time ${optimalResult.averageTravelTime.toFixed(1)}min, 0 Isochrone API calls`
-    )
-    return result
-  } catch (error) {
-    logger.error('Multi-phase minimax center calculation failed:', error)
-    throw error
-  }
-}
-
-/**
- * Find top candidates from batched matrix results for local refinement
- * @param batchedResult Result from Phase 0+1 batched evaluation
- * @param topK Number of top candidates to select
- * @returns Array of top candidates with coordinates and travel times
- * @private
- */
-const findTopCandidatesForRefinement = (
-  batchedResult: {
-    combinedMatrix: TravelTimeMatrix
-    totalHypothesisPoints: HypothesisPoint[]
-    apiCallCount: number
-  },
-  topK: number
-): Array<{ coordinate: Coordinate; maxTravelTime: number }> => {
-  try {
-    const matrix = batchedResult.combinedMatrix
-    const candidates: Array<{
-      coordinate: Coordinate
-      maxTravelTime: number
-      index: number
-    }> = []
-
-    // Calculate max travel time for each hypothesis point
-    for (
-      let destIndex = 0;
-      destIndex < matrix.destinations.length;
-      destIndex++
-    ) {
-      const travelTimesToDest: number[] = []
-      let hasValidRoute = false
-
-      // Collect travel times from all origins to this destination
-      for (
-        let originIndex = 0;
-        originIndex < matrix.origins.length;
-        originIndex++
-      ) {
-        const travelTime = matrix.travelTimes[originIndex][destIndex]
-
-        // Skip unreachable routes
-        if (
-          travelTime !== Infinity &&
-          travelTime >= 0 &&
-          Number.isFinite(travelTime)
-        ) {
-          travelTimesToDest.push(travelTime)
-          hasValidRoute = true
-        }
-      }
-
-      // Skip hypothesis points that are unreachable
-      if (hasValidRoute && travelTimesToDest.length === matrix.origins.length) {
-        const maxTime = Math.max(...travelTimesToDest)
-        candidates.push({
-          coordinate: matrix.destinations[destIndex],
-          maxTravelTime: maxTime,
-          index: destIndex,
-        })
-      }
-    }
-
-    // Sort by max travel time (ascending) and select top K
-    candidates.sort((a, b) => a.maxTravelTime - b.maxTravelTime)
-    const topCandidates = candidates.slice(0, Math.min(topK, candidates.length))
-
-    logger.info(
-      `Selected ${topCandidates.length} top candidates for local refinement (max times: ${topCandidates.map((c) => c.maxTravelTime.toFixed(1)).join(', ')}min)`
-    )
-
-    return topCandidates.map((c) => ({
-      coordinate: c.coordinate,
-      maxTravelTime: c.maxTravelTime,
-    }))
-  } catch (error) {
-    logger.error('Failed to find top candidates for refinement:', error)
-    return []
-  }
-}
-
-/**
- * Handle optimization fallback when multi-phase optimization fails (Cost-controlled - no automatic isochrones)
- * @param locations Array of participant locations
- * @param travelMode Travel mode for isochrone calculation
- * @param bufferTimeMinutes Buffer time for visualization (not automatically calculated)
- * @param originalError Original optimization error
- * @returns Fallback result using geographic centroid without automatic isochrone
- * @private
- */
-const handleOptimizationFallback = async (
-  locations: Location[],
-  travelMode: string,
-  bufferTimeMinutes: number,
-  originalError: Error | unknown
-): Promise<{
-  centerPoint: Coordinate
-  fairMeetingArea: GeoJSON.Polygon
-  individualIsochrones: GeoJSON.Polygon[]
-}> => {
-  logger.info(
-    'Falling back to geographic centroid due to optimization failure (cost-controlled mode)'
-  )
-
-  try {
-    const geographicCentroid =
-      geometryService.calculateGeographicCentroid(locations)
-
-    // COST-CONTROLLED: Do NOT generate fairMeetingArea automatically (Requirements 3.1)
-    // Return placeholder polygon that can be calculated on-demand
-    const placeholderFairMeetingArea: GeoJSON.Polygon = {
-      type: 'Polygon',
-      coordinates: [
-        [
-          [geographicCentroid.longitude, geographicCentroid.latitude],
-          [geographicCentroid.longitude, geographicCentroid.latitude],
-          [geographicCentroid.longitude, geographicCentroid.latitude],
-          [geographicCentroid.longitude, geographicCentroid.latitude],
-        ],
-      ],
-    }
-
-    logger.info(
-      'Fallback to geographic centroid completed successfully (cost-controlled mode)'
-    )
-
-    return {
-      centerPoint: geographicCentroid,
-      fairMeetingArea: placeholderFairMeetingArea,
-      individualIsochrones: [],
-    }
-  } catch (fallbackError) {
-    logger.error('Fallback to geographic centroid also failed:', fallbackError)
-    throw new AppError({
-      code: ErrorCode.OPTIMIZATION_FALLBACK_FAILED,
-      message: 'Both multi-phase optimization and fallback failed',
-      userMessage:
-        'Unable to calculate optimal meeting point. Please check your locations and try again.',
-      originalError: originalError,
-    })
-  }
-}
-
-/**
- * Generate multi-phase hypothesis points without automatic isochrone generation (Cost-controlled approach)
- * Requirements: 3.1, 3.3, 3.4 - No automatic isochrone API calls, display top N points immediately
- */
-export const generateHypothesisPointsResolver: MutationResolvers['generateHypothesisPoints'] =
-  async ({
-    locations,
-    travelMode,
-    enableLocalRefinement,
-    optimizationGoal,
-    topM = 5,
-    topN = 5,
-    deduplicationThreshold = 100.0,
-  }) => {
-    try {
-      logger.info(
-        `Starting cost-controlled hypothesis generation for ${locations.length} locations`
-      )
-
-      // Validate minimum locations
-      if (locations.length < 2) {
-        throw createInsufficientLocationsError()
-      }
-
-      // Validate maximum locations for performance
-      if (locations.length > 12) {
-        throw createTooManyLocationsError()
-      }
-
-      // Validate travel mode
-      if (
-        !['DRIVING_CAR', 'CYCLING_REGULAR', 'FOOT_WALKING'].includes(travelMode)
-      ) {
-        throw createTravelModeError(travelMode)
-      }
-
-      // Convert GraphQL input to Location objects with validation
-      const participantLocations: Location[] = locations.map((loc, index) => {
-        const coordinate = {
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-        }
-
-        // Validate input coordinates
-        if (!geometryService.validateCoordinateBounds(coordinate)) {
-          throw new Error(
-            `Invalid coordinates for location ${index + 1}: ${coordinate.latitude}, ${coordinate.longitude}. Coordinates must be within valid geographic bounds.`
-          )
-        }
-
-        return {
-          id: `location_${index}`,
-          name: loc.name || `Location ${index + 1}`,
-          coordinate,
-        }
-      })
-
-      // Phase 0: Generate anchor points (always enabled)
-      logger.info('Phase 0: Generating anchor points')
-      const anchorPoints =
-        generateBaselineHypothesisPoints(participantLocations)
-      // Validate all generated anchor points
-      const invalidPoints = anchorPoints.filter(
-        (point) => !geometryService.validateCoordinateBounds(point.coordinate)
-      )
-      if (invalidPoints.length > 0) {
-        logger.error(
-          `Generated invalid anchor points: ${invalidPoints.map((p) => `${p.id}: ${p.coordinate.latitude}, ${p.coordinate.longitude}`).join(', ')}`
-        )
-        throw new Error(
-          `Generated invalid anchor points: ${invalidPoints.map((p) => p.id).join(', ')}`
-        )
-      }
-
-      logger.info(`Generated ${anchorPoints.length} anchor points`)
-
-      // Phase 1: Generate coarse grid points (always enabled for multi-phase)
-      logger.info('Phase 1: Generating coarse grid points')
-      const coarseGridPoints = generateCoarseGridHypothesisPoints(
-        participantLocations,
-        {
-          paddingKm: 5.0,
-          gridResolution: 10,
-        }
-      )
-
-      // Validate all generated coarse grid points
-      const invalidGridPoints = coarseGridPoints.filter(
-        (point) => !geometryService.validateCoordinateBounds(point.coordinate)
-      )
-      if (invalidGridPoints.length > 0) {
-        logger.error(
-          `Generated invalid coarse grid points: ${invalidGridPoints.map((p) => `${p.id}: ${p.coordinate.latitude}, ${p.coordinate.longitude}`).join(', ')}`
-        )
-        throw new Error(
-          `Generated invalid coarse grid points: ${invalidGridPoints.map((p) => p.id).join(', ')}`
-        )
-      }
-
-      logger.info(`Generated ${coarseGridPoints.length} coarse grid points`)
-
-      // Combine Phase 0 + 1 points for matrix evaluation
-      // const phase01Points = [...anchorPoints, ...coarseGridPoints] // Not used directly
-
-      // Evaluate Phase 0+1 using Matrix API (single batched call)
-      logger.info('Evaluating Phase 0+1 points using Matrix API')
-      const origins = participantLocations.map((loc) => loc.coordinate)
-
-      let batchedResult
-      try {
-        batchedResult = await matrixService.evaluateBatchedMatrix(
-          origins,
-          anchorPoints,
-          coarseGridPoints,
-          travelMode
-        )
-        logger.info(
-          `Phase 0+1 matrix evaluation complete: ${batchedResult.apiCallCount} API calls`
-        )
-      } catch (matrixError) {
-        // Handle Matrix API errors with user-friendly messages
-        if (
-          matrixError.message?.includes('rate limit') ||
-          matrixError.message?.includes('quota')
-        ) {
-          logger.error(
-            'Matrix API rate limit reached during hypothesis evaluation'
-          )
-          throw new Error(
-            'API rate limit reached. Please wait a moment before generating new hypothesis points.'
-          )
-        }
-
-        if (matrixError.message?.includes('timeout')) {
-          logger.error('Matrix API timeout during hypothesis evaluation')
-          throw new Error(
-            'Matrix calculation timed out. Please try again with fewer locations or a different travel mode.'
-          )
-        }
-
-        logger.error('Matrix API evaluation failed:', matrixError)
-        throw new Error(
-          'Unable to evaluate travel times. Please check your locations and try again.'
-        )
-      }
-
-      // Score and rank Phase 0+1 points
-      const scoredPhase01Points = scoreHypothesisPoints(
-        batchedResult.totalHypothesisPoints,
-        batchedResult.combinedMatrix,
-        optimizationGoal
-      )
-
-      let localRefinementPoints: HypothesisPoint[] = []
-      let finalPoints = scoredPhase01Points
-      let totalApiCalls = batchedResult.apiCallCount
-
-      // Phase 2: Local refinement (if enabled)
-      if (enableLocalRefinement) {
-        logger.info('Phase 2: Generating local refinement points')
-
-        // Select top M points for refinement with deduplication
-        const topCandidates = selectTopCandidatesWithDeduplication(
-          scoredPhase01Points,
-          topM,
-          deduplicationThreshold
-        )
-
-        if (topCandidates.length > 0) {
-          // Generate local refinement points around top candidates
-          localRefinementPoints = generateLocalRefinementHypothesisPoints(
-            topCandidates.map((p) => ({
-              coordinate: p.coordinate,
-              maxTravelTime: p.travelTimeMetrics?.maxTravelTime || 0,
-            })),
-            {
-              topK: topCandidates.length,
-              refinementRadiusKm: 2.0,
-              fineGridResolution: 5,
-            }
-          )
-
-          if (localRefinementPoints.length > 0) {
-            logger.info(
-              `Generated ${localRefinementPoints.length} local refinement points`
-            )
-
-            // Evaluate local refinement points using separate Matrix API calls
-            const localGridGroups = [localRefinementPoints] // Treat as single group for now
-            const localGridResults =
-              await matrixService.evaluateLocalGridsSeparately(
-                origins,
-                localGridGroups,
-                travelMode
-              )
-
-            if (localGridResults.length > 0) {
-              const phase2Result =
-                matrixService.combineLocalGridResults(localGridResults)
-              const scoredLocalPoints = scoreHypothesisPoints(
-                phase2Result.hypothesisPoints,
-                phase2Result.matrix,
-                optimizationGoal
-              )
-
-              // Combine all phases for final selection
-              finalPoints = [...scoredPhase01Points, ...scoredLocalPoints]
-              totalApiCalls += localGridResults.length // One API call per local grid
-              logger.info(
-                `Phase 2 complete: ${localGridResults.length} additional API calls`
-              )
-            }
-          }
-        } else {
-          logger.info(
-            'No candidates selected for local refinement after deduplication'
-          )
-        }
-      }
-
-      // Apply final deduplication and select top N points of interest
-      const pointsOfInterest = selectPointsOfInterestWithDeduplication(
-        finalPoints,
-        topN,
-        deduplicationThreshold
-      )
-
-      // Ensure we have at least some points to return
-      if (pointsOfInterest.length === 0) {
-        logger.error(
-          'No valid points of interest generated - all hypothesis points may be unreachable'
-        )
-        throw new Error(
-          'No valid meeting points found. All generated locations may be unreachable by the selected travel mode.'
-        )
-      }
-
-      // Warn about high API usage
-      if (totalApiCalls > 10) {
-        logger.warn(
-          `High Matrix API usage: ${totalApiCalls} calls made during hypothesis generation`
-        )
-      }
-
-      logger.info(
-        `Cost-controlled hypothesis generation complete: ${pointsOfInterest.length} points of interest, ${totalApiCalls} Matrix API calls, 0 Isochrone API calls`
-      )
-
-      return {
-        anchorPoints,
-        coarseGridPoints,
-        localRefinementPoints,
-        finalPoints,
-        pointsOfInterest,
-        matrixApiCalls: totalApiCalls,
-        totalHypothesisPoints: finalPoints.length,
-      }
-    } catch (error) {
-      handleResolverError(error, 'generateHypothesisPoints')
-    }
-  }
 
 /**
  * Calculate isochrone for a specific hypothesis point on-demand (Cost-controlled approach)
@@ -1666,206 +870,8 @@ export const calculateIsochroneResolver: MutationResolvers['calculateIsochrone']
     }
   }
 
-/**
- * Score hypothesis points based on optimization goal
- * @private
- */
-const scoreHypothesisPoints = (
-  points: HypothesisPoint[],
-  matrix: TravelTimeMatrix,
-  goal: OptimizationGoal
-): HypothesisPoint[] => {
-  const scoredPoints = points
-    .map((point, index) => {
-      const travelTimes: number[] = []
-
-      // Collect travel times from all origins to this point
-      for (
-        let originIndex = 0;
-        originIndex < matrix.origins.length;
-        originIndex++
-      ) {
-        const travelTime = matrix.travelTimes[originIndex][index]
-        if (
-          travelTime !== Infinity &&
-          travelTime >= 0 &&
-          Number.isFinite(travelTime)
-        ) {
-          travelTimes.push(travelTime)
-        }
-      }
-
-      if (travelTimes.length === 0) {
-        // Skip points with no valid travel times instead of returning Infinity
-        // GraphQL cannot serialize Infinity values
-        logger.warn(
-          `Skipping hypothesis point ${point.id}: no valid travel times`
-        )
-        return null
-      }
-
-      // Calculate metrics
-      const maxTravelTime = Math.max(...travelTimes)
-      const averageTravelTime =
-        travelTimes.reduce((sum, time) => sum + time, 0) / travelTimes.length
-      const totalTravelTime = travelTimes.reduce((sum, time) => sum + time, 0)
-      const variance =
-        travelTimes.reduce(
-          (sum, time) => sum + Math.pow(time - averageTravelTime, 2),
-          0
-        ) / travelTimes.length
-
-      // Calculate score based on optimization goal
-      let score: number
-      switch (goal) {
-        case 'MINIMAX':
-          score = maxTravelTime
-          break
-        case 'MEAN':
-          score = variance
-          break
-        case 'MIN':
-          score = totalTravelTime
-          break
-        default:
-          score = maxTravelTime // Default to minimax
-      }
-
-      return {
-        ...point,
-        score,
-        travelTimeMetrics: {
-          maxTravelTime,
-          averageTravelTime,
-          totalTravelTime,
-          variance,
-        },
-      }
-    })
-    .filter((point): point is NonNullable<typeof point> => point !== null) // Filter out null values
-
-  return scoredPoints.sort((a, b) => (a.score || 0) - (b.score || 0))
-}
-
-/**
- * Select top candidates with proximity deduplication
- * @private
- */
-/**
- * Select top candidates with proximity deduplication using DeduplicationService
- * @param points Array of hypothesis points to select from
- * @param topM Number of top candidates to select
- * @param thresholdMeters Distance threshold in meters for point merging
- * @returns Array of selected candidates with deduplication applied
- * @private
- */
-const selectTopCandidatesWithDeduplication = (
-  points: HypothesisPoint[],
-  topM: number,
-  thresholdMeters: number
-): HypothesisPoint[] => {
-  if (!points || points.length === 0) {
-    logger.warn('No points provided for candidate selection')
-    return []
-  }
-
-  try {
-    // First, apply deduplication to all points
-    const deduplicatedPoints = deduplicationService.deduplicate(
-      points,
-      thresholdMeters
-    )
-
-    // Then select top M from deduplicated results
-    const topCandidates = deduplicatedPoints.slice(
-      0,
-      Math.min(topM, deduplicatedPoints.length)
-    )
-
-    logger.info(
-      `Selected ${topCandidates.length} candidates from ${points.length} points after deduplication (requested ${topM})`
-    )
-    return topCandidates
-  } catch (error) {
-    logger.error('Candidate selection with deduplication failed:', error)
-
-    // Fallback to simple selection without deduplication
-    logger.warn('Falling back to selection without deduplication')
-    const fallbackCandidates = points.slice(0, Math.min(topM, points.length))
-    return fallbackCandidates
-  }
-}
-
-/**
- * Select points of interest with final deduplication using DeduplicationService
- * @param points Array of hypothesis points to select from
- * @param topN Number of top points of interest to select
- * @param thresholdMeters Distance threshold in meters for point merging
- * @returns Array of points of interest with deduplication applied
- * @private
- */
-const selectPointsOfInterestWithDeduplication = (
-  points: HypothesisPoint[],
-  topN: number,
-  thresholdMeters: number
-): HypothesisPoint[] => {
-  if (!points || points.length === 0) {
-    logger.warn('No points provided for points of interest selection')
-    return []
-  }
-
-  try {
-    // Sort by score first (lower scores are better)
-    const sortedPoints = [...points].sort(
-      (a, b) => (a.score || 0) - (b.score || 0)
-    )
-
-    // Apply deduplication using DeduplicationService
-    const deduplicatedPoints = deduplicationService.deduplicate(
-      sortedPoints,
-      thresholdMeters
-    )
-
-    // Select top N from deduplicated results
-    const selectedPoints = deduplicatedPoints.slice(
-      0,
-      Math.min(topN, deduplicatedPoints.length)
-    )
-
-    // Mark as final output phase
-    const finalPoints = selectedPoints.map((point) => ({
-      ...point,
-      phase: 'FINAL_OUTPUT' as AlgorithmPhase,
-    }))
-
-    logger.info(
-      `Selected ${finalPoints.length} points of interest from ${points.length} total points after deduplication`
-    )
-    return finalPoints
-  } catch (error) {
-    logger.error(
-      'Points of interest selection with deduplication failed:',
-      error
-    )
-
-    // Fallback to simple selection without deduplication
-    logger.warn('Falling back to selection without deduplication')
-    const sortedPoints = [...points].sort(
-      (a, b) => (a.score || 0) - (b.score || 0)
-    )
-    const fallbackPoints = sortedPoints
-      .slice(0, Math.min(topN, sortedPoints.length))
-      .map((point) => ({
-        ...point,
-        phase: 'FINAL_OUTPUT' as AlgorithmPhase,
-      }))
-
-    return fallbackPoints
-  }
-}
-
 export const calculateMinimaxCenter: MutationResolvers['calculateMinimaxCenter'] =
-  async ({ locations, travelMode, bufferTimeMinutes, optimizationConfig }) => {
+  async ({ locations, travelMode, bufferTimeMinutes }) => {
     try {
       logger.info(
         `Starting minimax center calculation for ${locations.length} locations`
@@ -1903,72 +909,39 @@ export const calculateMinimaxCenter: MutationResolvers['calculateMinimaxCenter']
         },
       }))
 
-      // Process optimization configuration with defaults and validation
-      let finalOptimizationConfig: OptimizationConfig
-      if (optimizationConfig) {
-        // Convert GraphQL input to internal types
-        finalOptimizationConfig = {
-          mode: optimizationConfig.mode,
-          coarseGridConfig: optimizationConfig.coarseGridConfig
-            ? {
-                enabled: optimizationConfig.coarseGridConfig.enabled,
-                paddingKm: optimizationConfig.coarseGridConfig.paddingKm,
-                gridResolution:
-                  optimizationConfig.coarseGridConfig.gridResolution,
-              }
-            : undefined,
-          localRefinementConfig: optimizationConfig.localRefinementConfig
-            ? {
-                enabled: optimizationConfig.localRefinementConfig.enabled,
-                topK: optimizationConfig.localRefinementConfig.topK,
-                refinementRadiusKm:
-                  optimizationConfig.localRefinementConfig.refinementRadiusKm,
-                fineGridResolution:
-                  optimizationConfig.localRefinementConfig.fineGridResolution,
-              }
-            : undefined,
-        }
-
-        // Validate the configuration
-        try {
-          validateOptimizationConfig(finalOptimizationConfig)
-          validateGeographicConstraints(
-            finalOptimizationConfig,
-            participantLocations.length
-          )
-          logger.info(
-            `Using optimization mode: ${finalOptimizationConfig.mode}`
-          )
-        } catch (configError) {
-          logger.error(
-            'Optimization configuration validation failed:',
-            configError
-          )
-          throw new AppError({
-            code: ErrorCode.INVALID_OPTIMIZATION_CONFIG,
-            message: `Invalid optimization configuration: ${configError.message}`,
-            userMessage:
-              configError.message ||
-              'Invalid optimization settings. Please check your configuration and try again.',
-            originalError: configError,
-          })
-        }
-      } else {
-        // Use default configuration for backward compatibility
-        finalOptimizationConfig = DEFAULT_OPTIMIZATION_CONFIG
-        logger.info('Using default optimization configuration (BASELINE mode)')
-      }
-
-      // Use multi-phase optimization pipeline based on configuration
-      const result = await calculateMultiPhaseMinimaxCenter(
+      // Use simplified algorithm to find optimal location
+      const result = await calculateOptimalLocationsSimplified(
         participantLocations,
         travelMode,
-        bufferTimeMinutes,
-        finalOptimizationConfig
+        'MINIMAX', // Use MINIMAX optimization goal for minimax center
+        1 // Return only the top optimal point
       )
 
+      if (result.optimalPoints.length === 0) {
+        throw new Error('No optimal meeting point found')
+      }
+
+      const centerPoint = result.optimalPoints[0].coordinate
+
+      // Create placeholder polygon for fair meeting area (not automatically calculated)
+      const placeholderFairMeetingArea: GeoJSON.Polygon = {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [centerPoint.longitude, centerPoint.latitude],
+            [centerPoint.longitude, centerPoint.latitude],
+            [centerPoint.longitude, centerPoint.latitude],
+            [centerPoint.longitude, centerPoint.latitude],
+          ],
+        ],
+      }
+
       logger.info(`Minimax center calculation completed successfully`)
-      return result
+      return {
+        centerPoint,
+        fairMeetingArea: placeholderFairMeetingArea,
+        individualIsochrones: [], // Minimax approach doesn't use individual isochrones
+      }
     } catch (error) {
       handleResolverError(error, 'calculateMinimaxCenter')
     }
@@ -2011,9 +984,13 @@ export const findOptimalLocationsResolver: MutationResolvers['findOptimalLocatio
       }
 
       // Validate optimization goal
-      if (!['MINIMAX', 'MEAN', 'MIN'].includes(optimizationGoal)) {
+      if (
+        !['MINIMAX', 'MINIMIZE_VARIANCE', 'MINIMIZE_TOTAL'].includes(
+          optimizationGoal
+        )
+      ) {
         throw new Error(
-          `Invalid optimization goal: ${optimizationGoal}. Must be MINIMAX, MEAN, or MIN.`
+          `Invalid optimization goal: ${optimizationGoal}. Must be MINIMAX, MINIMIZE_VARIANCE, or MINIMIZE_TOTAL.`
         )
       }
 

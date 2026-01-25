@@ -22,8 +22,8 @@ import {
 
 export enum OptimizationGoal {
   MINIMAX = 'MINIMAX',
-  MEAN = 'MEAN',
-  MIN = 'MIN',
+  MINIMIZE_VARIANCE = 'MINIMIZE_VARIANCE',
+  MINIMIZE_TOTAL = 'MINIMIZE_TOTAL',
 }
 
 interface OptimizationGoalsProps {
@@ -43,8 +43,8 @@ const optimizationOptions = [
     color: 'primary' as const,
   },
   {
-    value: OptimizationGoal.MEAN,
-    label: 'Mean (Equalize)',
+    value: OptimizationGoal.MINIMIZE_VARIANCE,
+    label: 'Minimize Variance',
     description: 'Minimize variance to equalize travel times',
     detail:
       "Makes everyone's travel time as similar as possible - most balanced approach",
@@ -52,7 +52,7 @@ const optimizationOptions = [
     color: 'secondary' as const,
   },
   {
-    value: OptimizationGoal.MIN,
+    value: OptimizationGoal.MINIMIZE_TOTAL,
     label: 'Minimize Total',
     description: 'Minimize the total sum of all travel times',
     detail:

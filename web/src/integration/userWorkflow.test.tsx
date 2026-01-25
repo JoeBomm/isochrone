@@ -1,7 +1,14 @@
-import { render, screen, fireEvent, waitFor } from '@redwoodjs/testing/web'
 import { MockedProvider } from '@apollo/client/testing'
+
+import { render, screen, fireEvent, waitFor } from '@redwoodjs/testing/web'
+
+import {
+  GEOCODE_ADDRESS,
+  FIND_OPTIMAL_LOCATIONS,
+  CALCULATE_ISOCHRONE,
+  CALCULATE_MINIMAX_CENTER,
+} from 'src/lib/graphql'
 import HomePage from 'src/pages/HomePage/HomePage'
-import { GEOCODE_ADDRESS, GENERATE_HYPOTHESIS_POINTS, CALCULATE_ISOCHRONE } from 'src/lib/graphql'
 
 // Mock the Map component to avoid Leaflet issues in JSDOM
 jest.mock('src/components/Map/Map', () => {
@@ -9,7 +16,7 @@ jest.mock('src/components/Map/Map', () => {
     locations,
     hypothesisPoints,
     isochrones,
-    onHypothesisPointClick
+    onHypothesisPointClick,
   }) {
     return (
       <div data-testid="mock-map" className="map-container">
@@ -35,89 +42,61 @@ jest.mock('src/components/Map/Map', () => {
 const mockGeocodeResponse = {
   request: {
     query: GEOCODE_ADDRESS,
-    variables: { address: 'New York, NY' }
+    variables: { address: 'New York, NY' },
   },
   result: {
     data: {
       geocodeAddress: {
         latitude: 40.7128,
-        longitude: -74.0060
-      }
-    }
-  }
+        longitude: -74.006,
+      },
+    },
+  },
 }
 
-const mockGenerateHypothesisPointsResponse = {
+const mockFindOptimalLocationsResponse = {
   request: {
-    query: GENERATE_HYPOTHESIS_POINTS,
+    query: FIND_OPTIMAL_LOCATIONS,
     variables: {
       locations: [
-        { name: 'New York, NY', latitude: 40.7128, longitude: -74.0060 },
-        { name: 'Brooklyn, NY', latitude: 40.6892, longitude: -74.0445 }
+        { name: 'New York, NY', latitude: 40.7128, longitude: -74.006 },
+        { name: 'Brooklyn, NY', latitude: 40.6892, longitude: -74.0445 },
       ],
       travelMode: 'DRIVING_CAR',
-      enableLocalRefinement: false,
-      optimizationGoal: 'MINIMIZE_AVERAGE_TIME',
-      topM: 5,
-      topN: 5,
-      deduplicationThreshold: 100.0
-    }
+      optimizationGoal: 'MINIMAX',
+      topM: 3,
+      gridSize: 5,
+      deduplicationThreshold: 5000.0,
+    },
   },
   result: {
     data: {
-      generateHypothesisPoints: {
-        anchorPoints: [
+      findOptimalLocations: {
+        optimalPoints: [
           {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'ANCHOR',
-            score: 15.5,
+            id: 'optimal-1',
+            coordinate: { latitude: 40.701, longitude: -74.0252 },
             travelTimeMetrics: {
               maxTravelTime: 15.5,
               averageTravelTime: 12.3,
               totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
+              variance: 2.1,
+            },
+            rank: 1,
+          },
         ],
-        coarseGridPoints: [],
-        localRefinementPoints: [],
-        finalPoints: [
+        debugPoints: [
           {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'FINAL_OUTPUT',
-            score: 15.5,
-            travelTimeMetrics: {
-              maxTravelTime: 15.5,
-              averageTravelTime: 12.3,
-              totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
-        ],
-        pointsOfInterest: [
-          {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'FINAL_OUTPUT',
-            score: 15.5,
-            travelTimeMetrics: {
-              maxTravelTime: 15.5,
-              averageTravelTime: 12.3,
-              totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
+            id: 'anchor-1',
+            coordinate: { latitude: 40.701, longitude: -74.0252 },
+            type: 'ANCHOR',
+          },
         ],
         matrixApiCalls: 1,
-        totalHypothesisPoints: 1
-      }
-    }
-  }
+        totalHypothesisPoints: 25,
+      },
+    },
+  },
 }
 
 const mockCalculateIsochroneResponse = {
@@ -125,140 +104,135 @@ const mockCalculateIsochroneResponse = {
     query: CALCULATE_ISOCHRONE,
     variables: {
       pointId: 'geographic_centroid',
-      coordinate: { latitude: 40.7010, longitude: -74.0252 },
+      coordinate: { latitude: 40.701, longitude: -74.0252 },
       travelTimeMinutes: 10,
-      travelMode: 'DRIVING_CAR'
-    }
+      travelMode: 'DRIVING_CAR',
+    },
   },
   result: {
     data: {
       calculateIsochrone: {
         type: 'Polygon',
-        coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
-      }
-    }
-  }
+        coordinates: [
+          [
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1],
+            [0, 0],
+          ],
+        ],
+      },
+    },
+  },
 }
 
-const mockGenerateHypothesisPointsCoordinateResponse = [{
-  request: {
-    query: GENERATE_HYPOTHESIS_POINTS,
-    variables: {
-      locations: [
-        { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.0060 },
-        { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 }
-      ],
-      travelMode: 'DRIVING_CAR',
-      enableLocalRefinement: false,
-      optimizationGoal: 'MINIMIZE_AVERAGE_TIME',
-      topM: 5,
-      topN: 5,
-      deduplicationThreshold: 100.0
-    }
-  },
-  result: {
-    data: {
-      generateHypothesisPoints: {
-        anchorPoints: [
-          {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'ANCHOR',
-            score: 15.5,
-            travelTimeMetrics: {
-              maxTravelTime: 15.5,
-              averageTravelTime: 12.3,
-              totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
+const mockFindOptimalLocationsCoordinateResponse = [
+  {
+    request: {
+      query: FIND_OPTIMAL_LOCATIONS,
+      variables: {
+        locations: [
+          { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.006 },
+          { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 },
         ],
-        coarseGridPoints: [],
-        localRefinementPoints: [],
-        finalPoints: [
-          {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'FINAL_OUTPUT',
-            score: 15.5,
-            travelTimeMetrics: {
-              maxTravelTime: 15.5,
-              averageTravelTime: 12.3,
-              totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
-        ],
-        pointsOfInterest: [
-          {
-            id: 'geographic_centroid',
-            coordinate: { latitude: 40.7010, longitude: -74.0252 },
-            type: 'GEOGRAPHIC_CENTROID',
-            phase: 'FINAL_OUTPUT',
-            score: 15.5,
-            travelTimeMetrics: {
-              maxTravelTime: 15.5,
-              averageTravelTime: 12.3,
-              totalTravelTime: 24.6,
-              variance: 2.1
-            }
-          }
-        ],
-        matrixApiCalls: 1,
-        totalHypothesisPoints: 1
-      }
-    }
-  }
-}, {
-  request: {
-    query: "CALCULATE_MINIMAX_CENTER",
-    variables: {
-      locations: [
-        { name: 'Location 1', latitude: 40.7128, longitude: -74.0060 },
-        { name: 'Location 2', latitude: 40.7589, longitude: -73.9851 }
-      ],
-      bufferTimeMinutes: 10,
-      travelMode: 'DRIVING_CAR'
-    }
-  },
-  result: {
-    data: {
-      calculateMinimaxCenter: {
-        centerPoint: {
-          latitude: 40.7010,
-          longitude: -74.0252
+        travelMode: 'DRIVING_CAR',
+        optimizationGoal: 'MINIMAX',
+        topM: 3,
+        gridSize: 5,
+        deduplicationThreshold: 5000.0,
+      },
+    },
+    result: {
+      data: {
+        findOptimalLocations: {
+          optimalPoints: [
+            {
+              id: 'optimal-1',
+              coordinate: { latitude: 40.701, longitude: -74.0252 },
+              travelTimeMetrics: {
+                maxTravelTime: 15.5,
+                averageTravelTime: 12.3,
+                totalTravelTime: 24.6,
+                variance: 2.1,
+              },
+              rank: 1,
+            },
+          ],
+          debugPoints: [],
+          matrixApiCalls: 1,
+          totalHypothesisPoints: 25,
         },
-        fairMeetingArea: {
-          type: 'Polygon',
-          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+      },
+    },
+  },
+  {
+    request: {
+      query: FIND_OPTIMAL_LOCATIONS,
+      variables: {
+        locations: [
+          { name: 'Location 1', latitude: 40.7128, longitude: -74.006 },
+          { name: 'Location 2', latitude: 40.7589, longitude: -73.9851 },
+        ],
+        travelMode: 'DRIVING_CAR',
+        optimizationGoal: 'MINIMAX',
+        topM: 3,
+        gridSize: 5,
+        deduplicationThreshold: 5000.0,
+      },
+    },
+    result: {
+      data: {
+        findOptimalLocations: {
+          optimalPoints: [
+            {
+              id: 'optimal-1',
+              coordinate: {
+                latitude: 40.701,
+                longitude: -74.0252,
+              },
+              travelTimeMetrics: {
+                maxTravelTime: 15.5,
+                averageTravelTime: 12.3,
+                totalTravelTime: 24.6,
+                variance: 2.1,
+              },
+              rank: 1,
+            },
+          ],
+          debugPoints: [],
+          matrixApiCalls: 1,
+          totalHypothesisPoints: 25,
         },
-        individualIsochrones: []
-      }
-    }
-  }
-}]
+      },
+    },
+  },
+]
 
 const mockBrooklynGeocodeResponse = {
   request: {
     query: GEOCODE_ADDRESS,
-    variables: { address: 'Brooklyn, NY' }
+    variables: { address: 'Brooklyn, NY' },
   },
   result: {
     data: {
       geocodeAddress: {
         latitude: 40.6892,
-        longitude: -74.0445
-      }
-    }
-  }
+        longitude: -74.0445,
+      },
+    },
+  },
 }
 
 describe('Integration Tests - Complete User Workflows', () => {
   describe('End-to-End Address Input to Fair Meeting Point', () => {
     it('should complete full workflow from address input to result display', async () => {
-      const mocks = [mockGeocodeResponse, mockBrooklynGeocodeResponse, mockCalculateIsochroneResponse]
+      const mocks = [
+        mockGeocodeResponse,
+        mockBrooklynGeocodeResponse,
+        mockFindOptimalLocationsResponse,
+        mockCalculateIsochroneResponse,
+      ]
 
       render(
         <MockedProvider mocks={mocks} addTypename={false}>
@@ -267,7 +241,9 @@ describe('Integration Tests - Complete User Workflows', () => {
       )
 
       // Step 1: Add first location by address
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       fireEvent.change(addressInput, { target: { value: 'New York, NY' } })
@@ -290,18 +266,68 @@ describe('Integration Tests - Complete User Workflows', () => {
       })
 
       // Step 3: Calculate fair meeting point
-      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
+      const calculateButton = screen.getByRole('button', {
+        name: /calculate optimal meeting points/i,
+      })
       fireEvent.click(calculateButton)
 
-      await waitFor(() => {
-        // Look for the success message in toast notifications
-        expect(screen.getByText(/Successfully calculated optimal meeting location/i)).toBeInTheDocument()
-      }, { timeout: 5000 })
+      await waitFor(
+        () => {
+          // Look for the success message in toast notifications
+          expect(
+            screen.getByText(
+              /Successfully calculated optimal meeting location/i
+            )
+          ).toBeInTheDocument()
+        },
+        { timeout: 5000 }
+      )
 
       // Verify results are displayed
       expect(screen.getAllByText(/Center Point/i).length).toBeGreaterThan(0)
     })
   })
+
+  const mockCalculateCoordinateResponse = {
+    request: {
+      query: FIND_OPTIMAL_LOCATIONS,
+      variables: {
+        locations: [
+          { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.006 },
+        ],
+        travelMode: 'DRIVING_CAR',
+        optimizationGoal: 'MINIMAX',
+        topM: 3,
+        gridSize: 5,
+        deduplicationThreshold: 5000.0,
+      },
+    },
+    result: {
+      data: {
+        findOptimalLocations: {
+          optimalPoints: [
+            {
+              id: 'optimal-1',
+              coordinate: {
+                latitude: 40.7128,
+                longitude: -74.006,
+              },
+              travelTimeMetrics: {
+                maxTravelTime: 0,
+                averageTravelTime: 0,
+                totalTravelTime: 0,
+                variance: 0,
+              },
+              rank: 1,
+            },
+          ],
+          debugPoints: [],
+          matrixApiCalls: 1,
+          totalHypothesisPoints: 1,
+        },
+      },
+    },
+  }
 
   describe('Coordinate Input Workflow', () => {
     it('should handle direct coordinate input', async () => {
@@ -313,7 +339,9 @@ describe('Integration Tests - Complete User Workflows', () => {
         </MockedProvider>
       )
 
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       // Add first location by coordinates
@@ -335,11 +363,15 @@ describe('Integration Tests - Complete User Workflows', () => {
       })
 
       // Calculate fair meeting point
-      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
+      const calculateButton = screen.getByRole('button', {
+        name: /calculate optimal meeting points/i,
+      })
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Successfully calculated optimal meeting location/i)).toBeInTheDocument()
+        expect(
+          screen.getByText(/Successfully calculated optimal meeting location/i)
+        ).toBeInTheDocument()
       })
     })
   })
@@ -349,9 +381,9 @@ describe('Integration Tests - Complete User Workflows', () => {
       const errorMock = {
         request: {
           query: GEOCODE_ADDRESS,
-          variables: { address: 'Invalid Address' }
+          variables: { address: 'Invalid Address' },
         },
-        error: new Error('Geocoding failed')
+        error: new Error('Geocoding failed'),
       }
 
       render(
@@ -360,30 +392,37 @@ describe('Integration Tests - Complete User Workflows', () => {
         </MockedProvider>
       )
 
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       fireEvent.change(addressInput, { target: { value: 'Invalid Address' } })
       fireEvent.click(addButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Unable to find "Invalid Address"/i)).toBeInTheDocument()
+        expect(
+          screen.getByText(/Unable to find "Invalid Address"/i)
+        ).toBeInTheDocument()
       })
     })
 
     it('should display error messages for failed calculations', async () => {
       const calculationErrorMock = {
         request: {
-          query: CALCULATE_MINIMAX_CENTER,
+          query: FIND_OPTIMAL_LOCATIONS,
           variables: {
             locations: [
-              { name: 'Test Location', latitude: 40.7128, longitude: -74.0060 }
+              { name: 'Test Location', latitude: 40.7128, longitude: -74.006 },
             ],
-            bufferTimeMinutes: 10,
-            travelMode: 'DRIVING_CAR'
-          }
+            travelMode: 'DRIVING_CAR',
+            optimizationGoal: 'MINIMAX',
+            topM: 3,
+            gridSize: 5,
+            deduplicationThreshold: 5000.0,
+          },
         },
-        error: new Error('Calculation failed')
+        error: new Error('Calculation failed'),
       }
 
       render(
@@ -393,7 +432,9 @@ describe('Integration Tests - Complete User Workflows', () => {
       )
 
       // Add a single location (insufficient for calculation)
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       fireEvent.change(addressInput, { target: { value: '40.7128, -74.0060' } })
@@ -404,18 +445,26 @@ describe('Integration Tests - Complete User Workflows', () => {
         expect(locationElements.length).toBeGreaterThan(0)
       })
 
-      const calculateButton = screen.getByRole('button', { name: /find optimal meeting point/i })
+      const calculateButton = screen.getByRole('button', {
+        name: /calculate optimal meeting points/i,
+      })
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Add at least 2 locations to calculate/i)).toBeInTheDocument()
+        expect(
+          screen.getByText(/Add at least 2 locations to calculate/i)
+        ).toBeInTheDocument()
       })
     })
   })
 
   describe('Location Management', () => {
     it('should allow removing locations and update calculations', async () => {
-      const mocks = [mockGeocodeResponse, mockBrooklynGeocodeResponse]
+      const mocks = [
+        mockGeocodeResponse,
+        mockBrooklynGeocodeResponse,
+        mockFindOptimalLocationsResponse,
+      ]
 
       render(
         <MockedProvider mocks={mocks} addTypename={false}>
@@ -423,7 +472,9 @@ describe('Integration Tests - Complete User Workflows', () => {
         </MockedProvider>
       )
 
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const buttons = screen.getAllByText('Add Location')
       const addButton = buttons[buttons.length - 1]
 
@@ -447,7 +498,9 @@ describe('Integration Tests - Complete User Workflows', () => {
 
       // Remove first location using the X button (SVG icon)
       // Find remove buttons by looking for buttons that are children of location items
-      const locationItems = document.querySelectorAll('.flex.items-center.justify-between')
+      const locationItems = document.querySelectorAll(
+        '.flex.items-center.justify-between'
+      )
       expect(locationItems.length).toBeGreaterThan(0)
 
       const firstLocationRemoveButton = locationItems[0].querySelector('button')
@@ -457,7 +510,9 @@ describe('Integration Tests - Complete User Workflows', () => {
 
       await waitFor(() => {
         // Check that New York is no longer in the location list by counting location items
-        const remainingLocationItems = document.querySelectorAll('.flex.items-center.justify-between')
+        const remainingLocationItems = document.querySelectorAll(
+          '.flex.items-center.justify-between'
+        )
         expect(remainingLocationItems.length).toBe(1) // Should only have Brooklyn left
 
         // Brooklyn should still be there
@@ -467,35 +522,56 @@ describe('Integration Tests - Complete User Workflows', () => {
     })
   })
 
-  describe('Travel Mode and Slack Time Controls', () => {
-    it('should allow changing travel mode and slack time', async () => {
+  describe('Travel Mode and Travel Time Range Controls', () => {
+    it('should allow changing travel mode and travel time range', async () => {
       const customMock = {
         request: {
-          query: CALCULATE_MINIMAX_CENTER,
+          query: FIND_OPTIMAL_LOCATIONS,
           variables: {
             locations: [
-              { name: '40.7128, -74.0060', latitude: 40.7128, longitude: -74.0060 },
-              { name: '40.6892, -74.0445', latitude: 40.6892, longitude: -74.0445 }
+              {
+                name: '40.7128, -74.0060',
+                latitude: 40.7128,
+                longitude: -74.006,
+              },
+              {
+                name: '40.6892, -74.0445',
+                latitude: 40.6892,
+                longitude: -74.0445,
+              },
             ],
-            bufferTimeMinutes: 15,
-            travelMode: 'CYCLING_REGULAR'
-          }
+            travelMode: 'CYCLING_REGULAR',
+            optimizationGoal: 'MINIMAX',
+            topM: 3,
+            gridSize: 5,
+            deduplicationThreshold: 5000.0,
+          },
         },
         result: {
           data: {
-            calculateMinimaxCenter: {
-              centerPoint: {
-                latitude: 40.7010,
-                longitude: -74.0252
-              },
-              fairMeetingArea: {
-                type: 'Polygon',
-                coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
-              },
-              individualIsochrones: []
-            }
-          }
-        }
+            findOptimalLocations: {
+              optimalPoints: [
+                {
+                  id: 'optimal-1',
+                  coordinate: {
+                    latitude: 40.701,
+                    longitude: -74.0252,
+                  },
+                  travelTimeMetrics: {
+                    maxTravelTime: 18.2,
+                    averageTravelTime: 14.5,
+                    totalTravelTime: 29.0,
+                    variance: 3.2,
+                  },
+                  rank: 1,
+                },
+              ],
+              debugPoints: [],
+              matrixApiCalls: 1,
+              totalHypothesisPoints: 25,
+            },
+          },
+        },
       }
 
       render(
@@ -505,7 +581,9 @@ describe('Integration Tests - Complete User Workflows', () => {
       )
 
       // Add locations directly by coordinates to avoid geocoding mocks
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       fireEvent.change(addressInput, { target: { value: '40.7128, -74.0060' } })
@@ -518,16 +596,20 @@ describe('Integration Tests - Complete User Workflows', () => {
       const cyclingButton = screen.getByRole('button', { name: /cycling/i })
       fireEvent.click(cyclingButton)
 
-      // Change slack time
-      const slackTimeInput = screen.getByLabelText(/slack time/i)
-      fireEvent.change(slackTimeInput, { target: { value: '15' } })
+      // Change travel time range
+      const travelTimeRangeInput = screen.getByLabelText(/travel time range/i)
+      fireEvent.change(travelTimeRangeInput, { target: { value: '15' } })
 
       // Calculate with new settings
-      const calculateButton = screen.getByText('Find Optimal Meeting Point')
+      const calculateButton = screen.getByText(
+        'Calculate Optimal Meeting Points'
+      )
       fireEvent.click(calculateButton)
 
       await waitFor(() => {
-        expect(screen.getByText(/Successfully calculated optimal meeting location/i)).toBeInTheDocument()
+        expect(
+          screen.getByText(/Successfully calculated optimal meeting location/i)
+        ).toBeInTheDocument()
       })
     })
   })
@@ -537,17 +619,17 @@ describe('Integration Tests - Complete User Workflows', () => {
       const delayedMock = {
         request: {
           query: GEOCODE_ADDRESS,
-          variables: { address: 'New York, NY' }
+          variables: { address: 'New York, NY' },
         },
         result: {
           data: {
             geocodeAddress: {
               latitude: 40.7128,
-              longitude: -74.0060
-            }
-          }
+              longitude: -74.006,
+            },
+          },
         },
-        delay: 1000 // 1 second delay
+        delay: 1000, // 1 second delay
       }
 
       render(
@@ -556,7 +638,9 @@ describe('Integration Tests - Complete User Workflows', () => {
         </MockedProvider>
       )
 
-      const addressInput = screen.getByPlaceholderText(/enter address or coordinates/i)
+      const addressInput = screen.getByPlaceholderText(
+        /123 Main St, City or 40.7128,-74.0060/i
+      )
       const addButton = screen.getByRole('button', { name: /add location/i })
 
       fireEvent.change(addressInput, { target: { value: 'New York, NY' } })
@@ -566,10 +650,13 @@ describe('Integration Tests - Complete User Workflows', () => {
       expect(screen.getByText(/Finding Location/i)).toBeInTheDocument()
 
       // Wait for completion
-      await waitFor(() => {
-        const locationElements = screen.getAllByText(/New York, NY/i)
-        expect(locationElements.length).toBeGreaterThan(0)
-      }, { timeout: 2000 })
+      await waitFor(
+        () => {
+          const locationElements = screen.getAllByText(/New York, NY/i)
+          expect(locationElements.length).toBeGreaterThan(0)
+        },
+        { timeout: 2000 }
+      )
     })
   })
 })

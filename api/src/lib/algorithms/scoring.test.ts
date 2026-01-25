@@ -94,17 +94,23 @@ describe('TravelTimeScoringService', () => {
       expect(score).toBe(30) // Should return max travel time
     })
 
-    it('should calculate score for MEAN goal', () => {
-      const score = service.calculateScore(sampleMetrics, OptimizationGoal.MEAN)
+    it('should calculate score for MINIMIZE_VARIANCE goal', () => {
+      const score = service.calculateScore(
+        sampleMetrics,
+        OptimizationGoal.MINIMIZE_VARIANCE
+      )
       expect(score).toBe(50) // Should return variance
     })
 
-    it('should calculate score for MIN goal', () => {
-      const score = service.calculateScore(sampleMetrics, OptimizationGoal.MIN)
+    it('should calculate score for MINIMIZE_TOTAL goal', () => {
+      const score = service.calculateScore(
+        sampleMetrics,
+        OptimizationGoal.MINIMIZE_TOTAL
+      )
       expect(score).toBe(60) // Should return total travel time
     })
 
-    it('should throw error for MEAN goal without variance', () => {
+    it('should throw error for MINIMIZE_VARIANCE goal without variance', () => {
       const metricsWithoutVariance: TravelTimeMetrics = {
         maxTravelTime: 30,
         averageTravelTime: 20,
@@ -113,8 +119,11 @@ describe('TravelTimeScoringService', () => {
       }
 
       expect(() => {
-        service.calculateScore(metricsWithoutVariance, OptimizationGoal.MEAN)
-      }).toThrow('Variance not calculated for MEAN goal')
+        service.calculateScore(
+          metricsWithoutVariance,
+          OptimizationGoal.MINIMIZE_VARIANCE
+        )
+      }).toThrow('Variance not calculated for MINIMIZE_VARIANCE goal')
     })
 
     it('should throw error for invalid metrics', () => {
@@ -173,9 +182,9 @@ describe('TravelTimeScoringService', () => {
       expect(minimaxResults[0].id).toBe('point2')
       expect(minimaxResults[0].score).toBe(15)
 
-      // Test MIN
+      // Test MINIMIZE_TOTAL
       const minConfig: ScoringConfig = {
-        optimizationGoal: OptimizationGoal.MIN,
+        optimizationGoal: OptimizationGoal.MINIMIZE_TOTAL,
       }
       const minResults = service.scorePoints(
         samplePoints,
@@ -187,9 +196,9 @@ describe('TravelTimeScoringService', () => {
       expect(minResults[0].id).toBe('point2')
       expect(minResults[0].score).toBe(45)
 
-      // Test MEAN
+      // Test MINIMIZE_VARIANCE
       const meanConfig: ScoringConfig = {
-        optimizationGoal: OptimizationGoal.MEAN,
+        optimizationGoal: OptimizationGoal.MINIMIZE_VARIANCE,
       }
       const meanResults = service.scorePoints(
         samplePoints,
@@ -375,8 +384,8 @@ describe('TravelTimeScoringService', () => {
   describe('OptimizationGoal enum', () => {
     it('should have all expected optimization goals', () => {
       expect(OptimizationGoal.MINIMAX).toBe('MINIMAX')
-      expect(OptimizationGoal.MEAN).toBe('MEAN')
-      expect(OptimizationGoal.MIN).toBe('MIN')
+      expect(OptimizationGoal.MINIMIZE_VARIANCE).toBe('MINIMIZE_VARIANCE')
+      expect(OptimizationGoal.MINIMIZE_TOTAL).toBe('MINIMIZE_TOTAL')
     })
 
     it('should have exactly 3 optimization goals', () => {

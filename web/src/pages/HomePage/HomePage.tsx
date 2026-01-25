@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 import { useMutation } from '@apollo/client'
 
@@ -6,6 +6,7 @@ import { Metadata } from '@redwoodjs/web'
 
 import ApiUsageWarning from 'src/components/ApiUsageWarning/ApiUsageWarning'
 import DebugControls from 'src/components/DebugControls/DebugControls'
+import IsochroneControls from 'src/components/IsochroneControls/IsochroneControls'
 import LoadingOverlay from 'src/components/LoadingSpinner/LoadingOverlay'
 import LocationInput, {
   type Location,
@@ -20,9 +21,9 @@ import { useToast } from 'src/hooks/useToast'
 import MainLayout from 'src/layouts/MainLayout/MainLayout'
 import {
   DEFAULT_DEDUPLICATION_THRESHOLD,
-  DEFAULT_TOP_M,
   DEFAULT_GRID_SIZE,
   UI_CONSTANTS,
+  MeetingPointValidation,
 } from 'src/lib/constants'
 import { FIND_OPTIMAL_LOCATIONS, GENERATE_ISOCHRONE } from 'src/lib/graphql'
 
@@ -45,7 +46,30 @@ const HomePage = () => {
   const [optimizationGoal, setOptimizationGoal] = useState<OptimizationGoal>(
     OptimizationGoal.MINIMAX
   )
-  const [topM] = useState(DEFAULT_TOP_M)
+
+  // Meeting point count with session storage persistence
+  const [meetingPointCount, setMeetingPointCount] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('meetingPointCount')
+      if (stored) {
+        const parsed = parseInt(stored, 10)
+        // Validate stored value is within bounds
+        if (
+          parsed >= UI_CONSTANTS.MEETING_POINTS.MIN_COUNT &&
+          parsed <= UI_CONSTANTS.MEETING_POINTS.MAX_COUNT
+        ) {
+          return parsed
+        }
+      }
+    } catch (error) {
+      console.warn(
+        'Failed to load meeting point count from session storage:',
+        error
+      )
+    }
+    return UI_CONSTANTS.MEETING_POINTS.DEFAULT_COUNT
+  })
+
   const [gridSize] = useState(DEFAULT_GRID_SIZE)
   const [deduplicationThreshold] = useState(DEFAULT_DEDUPLICATION_THRESHOLD)
   const [isCalculating, setIsCalculating] = useState(false)
@@ -75,13 +99,152 @@ const HomePage = () => {
   const [isochrones, setIsochrones] = useState<
     globalThis.Map<string, GeoJSON.Polygon>
   >(new globalThis.Map())
+  const [selectedOptimalPointId, setSelectedOptimalPointId] = useState<
+    string | null
+  >(null)
+  const [activeIsochronePointId, setActiveIsochronePointId] = useState<
+    string | null
+  >(null)
   const [calculationError, setCalculationError] = useState<string>('')
   const [matrixApiCalls, setMatrixApiCalls] = useState<number>(0)
   const [totalHypothesisPoints, setTotalHypothesisPoints] = useState<number>(0)
 
+  // Store raw calculation results for automatic re-ranking when optimization goal changes
+  const [rawCalculationResults, setRawCalculationResults] = useState<{
+    optimalPoints: Array<{
+      id: string
+      coordinate: Coordinate
+      travelTimeMetrics: {
+        maxTravelTime: number
+        averageTravelTime: number
+        totalTravelTime: number
+        variance: number
+      }
+      rank: number
+    }>
+    debugPoints: Array<{
+      id: string
+      coordinate: Coordinate
+      type: 'ANCHOR' | 'GRID'
+    }>
+    matrixApiCalls: number
+    totalHypothesisPoints: number
+  } | null>(null)
+
   // Debug visualization state
   const [showAnchors, setShowAnchors] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
+
+  // Function to re-rank optimal points based on optimization goal (Requirements 4.3)
+  const reRankOptimalPoints = (
+    points: Array<{
+      id: string
+      coordinate: Coordinate
+      travelTimeMetrics: {
+        maxTravelTime: number
+        averageTravelTime: number
+        totalTravelTime: number
+        variance: number
+      }
+      rank: number
+    }>,
+    goal: OptimizationGoal
+  ) => {
+    const sortedPoints = [...points].sort((a, b) => {
+      switch (goal) {
+        case OptimizationGoal.MINIMAX:
+          return (
+            a.travelTimeMetrics.maxTravelTime -
+            b.travelTimeMetrics.maxTravelTime
+          )
+        case OptimizationGoal.MINIMIZE_VARIANCE:
+          return a.travelTimeMetrics.variance - b.travelTimeMetrics.variance
+        case OptimizationGoal.MINIMIZE_TOTAL:
+          return (
+            a.travelTimeMetrics.totalTravelTime -
+            b.travelTimeMetrics.totalTravelTime
+          )
+        default:
+          return (
+            a.travelTimeMetrics.maxTravelTime -
+            b.travelTimeMetrics.maxTravelTime
+          )
+      }
+    })
+
+    // Update ranks based on new sorting
+    return sortedPoints.map((point, index) => ({
+      ...point,
+      rank: index + 1,
+    }))
+  }
+
+  // Handle optimization goal changes with automatic re-ranking (Requirements 4.3)
+  useEffect(() => {
+    if (
+      rawCalculationResults &&
+      rawCalculationResults.optimalPoints.length > 0
+    ) {
+      setIsRecalculating(true)
+
+      // Re-rank points based on new optimization goal without API calls
+      const reRankedPoints = reRankOptimalPoints(
+        rawCalculationResults.optimalPoints,
+        optimizationGoal
+      )
+
+      setOptimalPoints(reRankedPoints)
+
+      // Brief delay to show recalculation state
+      setTimeout(() => {
+        setIsRecalculating(false)
+        showSuccess(
+          'Points Re-ranked',
+          `Optimal points have been re-ranked using ${optimizationGoal} optimization goal (no additional API calls).`
+        )
+      }, 500)
+    }
+  }, [optimizationGoal, rawCalculationResults, showSuccess])
+
+  // Persist meeting point count to session storage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('meetingPointCount', meetingPointCount.toString())
+    } catch (error) {
+      console.warn(
+        'Failed to save meeting point count to session storage:',
+        error
+      )
+    }
+  }, [meetingPointCount])
+
+  // Handle meeting point count changes with validation and boundary clamping
+  const handleMeetingPointCountChange = (count: number) => {
+    // Use validation utilities for consistent validation
+    const { count: clampedCount, wasClamped } =
+      MeetingPointValidation.validateAndClamp(count)
+
+    setMeetingPointCount(clampedCount)
+
+    // If the value was clamped, show feedback to the user
+    if (wasClamped) {
+      showWarning(
+        'Value Adjusted',
+        `Meeting point count adjusted to ${clampedCount} (valid range: ${UI_CONSTANTS.MEETING_POINTS.MIN_COUNT}-${UI_CONSTANTS.MEETING_POINTS.MAX_COUNT})`
+      )
+    }
+
+    // Clear previous results when meeting point count changes
+    if (optimalPoints.length > 0) {
+      setOptimalPoints([])
+      setDebugPoints([])
+      setIsochrones(new globalThis.Map())
+      setSelectedOptimalPointId(null)
+      setActiveIsochronePointId(null)
+      setCalculationError('')
+      setRawCalculationResults(null)
+    }
+  }
 
   // GraphQL mutation for finding optimal locations (cost-controlled, Requirements 4.1, 4.3)
   const [findOptimalLocations] = useMutation(FIND_OPTIMAL_LOCATIONS, {
@@ -92,8 +255,21 @@ const HomePage = () => {
         // Track API usage
         trackApiCall('matrix')
 
-        // Display optimal points immediately without isochrones (Requirements 4.3)
-        setOptimalPoints(result.optimalPoints || [])
+        // Store raw results for future re-ranking (Requirements 4.3)
+        const rawResults = {
+          optimalPoints: result.optimalPoints || [],
+          debugPoints: result.debugPoints || [],
+          matrixApiCalls: result.matrixApiCalls || 0,
+          totalHypothesisPoints: result.totalHypothesisPoints || 0,
+        }
+        setRawCalculationResults(rawResults)
+
+        // Display optimal points with current optimization goal ranking
+        const rankedPoints = reRankOptimalPoints(
+          result.optimalPoints || [],
+          optimizationGoal
+        )
+        setOptimalPoints(rankedPoints)
         setDebugPoints(result.debugPoints || [])
         setMatrixApiCalls(result.matrixApiCalls || 0)
         setTotalHypothesisPoints(result.totalHypothesisPoints || 0)
@@ -114,6 +290,7 @@ const HomePage = () => {
       setCalculationError(errorMessage)
       setOptimalPoints([])
       setDebugPoints([])
+      setRawCalculationResults(null)
       setIsCalculating(false)
       setIsRecalculating(false)
 
@@ -157,7 +334,10 @@ const HomePage = () => {
         setOptimalPoints([])
         setDebugPoints([])
         setIsochrones(new globalThis.Map())
+        setSelectedOptimalPointId(null)
+        setActiveIsochronePointId(null)
         setCalculationError('')
+        setRawCalculationResults(null)
       }
     } else {
       showWarning(
@@ -191,7 +371,10 @@ const HomePage = () => {
         setOptimalPoints([])
         setDebugPoints([])
         setIsochrones(new globalThis.Map())
+        setSelectedOptimalPointId(null)
+        setActiveIsochronePointId(null)
         setCalculationError('')
+        setRawCalculationResults(null)
       }
     } else {
       showWarning(
@@ -215,7 +398,10 @@ const HomePage = () => {
     setOptimalPoints([])
     setDebugPoints([])
     setIsochrones(new globalThis.Map())
+    setSelectedOptimalPointId(null)
+    setActiveIsochronePointId(null)
     setCalculationError('')
+    setRawCalculationResults(null)
   }
 
   const handleCalculate = async () => {
@@ -248,7 +434,7 @@ const HomePage = () => {
           locations: locationInputs,
           travelMode: travelMode,
           optimizationGoal: optimizationGoal,
-          topM: topM,
+          topM: meetingPointCount,
           gridSize: gridSize,
           deduplicationThreshold: deduplicationThreshold,
         },
@@ -266,71 +452,39 @@ const HomePage = () => {
     }
   }
 
-  // Handle optimization goal change and recalculation (Requirements 7.4, 7.5)
-  const handleOptimizationGoalChange = async (newGoal: OptimizationGoal) => {
-    const previousGoal = optimizationGoal
-    setOptimizationGoal(newGoal)
-
-    // If we have existing results and locations, recalculate with new goal
-    if (optimalPoints.length > 0 && locations.length >= 2) {
-      setIsRecalculating(true)
-      setCalculationError('')
-
-      // Show feedback during recalculation
-      showSuccess(
-        'Recalculating...',
-        `Switching from ${previousGoal} to ${newGoal} optimization. Recalculating optimal points...`
-      )
-
-      try {
-        // Prepare location inputs for GraphQL mutation
-        const locationInputs = locations.map((location) => ({
-          name: location.name,
-          latitude: location.latitude,
-          longitude: location.longitude,
-        }))
-
-        await findOptimalLocations({
-          variables: {
-            locations: locationInputs,
-            travelMode: travelMode,
-            optimizationGoal: newGoal,
-            topM: topM,
-            gridSize: gridSize,
-            deduplicationThreshold: deduplicationThreshold,
-          },
-        })
-
-        // Clear existing isochrones since rankings may have changed
-        setIsochrones(new globalThis.Map())
-      } catch (error) {
-        console.error('Optimization goal recalculation failed:', error)
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : 'Failed to recalculate with new optimization goal. Please try again.'
-        setCalculationError(errorMessage)
-        setIsRecalculating(false)
-
-        showError('Recalculation Failed', errorMessage)
-
-        // Revert to previous goal on error
-        setOptimizationGoal(previousGoal)
-      }
-    }
+  // Handle clearing the displayed isochrone (Requirements 5.5)
+  const handleClearIsochrone = () => {
+    setActiveIsochronePointId(null)
+    setSelectedOptimalPointId(null)
+    showSuccess('Isochrone Cleared', 'The displayed isochrone has been hidden.')
   }
 
-  // Handle on-demand isochrone calculation when user clicks an optimal point (Requirements 4.2)
+  // Handle on-demand isochrone calculation when user clicks an optimal point (Requirements 4.2, 5.1, 5.2)
   const handleOptimalPointClick = async (point: {
     id: string
     coordinate: Coordinate
   }) => {
     try {
+      // Set the selected point for visual indication (Requirements 5.3)
+      setSelectedOptimalPointId(point.id)
+
       // Check if isochrone is already calculated and cached
       if (isochrones.has(point.id)) {
+        // If this point already has its isochrone displayed, hide it
+        if (activeIsochronePointId === point.id) {
+          setActiveIsochronePointId(null)
+          showSuccess(
+            'Isochrone Hidden',
+            `Isochrone for ${point.id} has been hidden.`
+          )
+          return
+        }
+
+        // Show cached isochrone and hide any previous one (Requirements 5.1, 5.2)
+        setActiveIsochronePointId(point.id)
         showSuccess(
-          'Isochrone Already Displayed',
-          `Isochrone for ${point.id} is already shown on the map (cached).`
+          'Isochrone Displayed',
+          `Isochrone for ${point.id} is now shown on the map (cached).`
         )
         return
       }
@@ -350,10 +504,13 @@ const HomePage = () => {
       })
 
       if (result.data?.generateIsochrone) {
-        // Cache the isochrone result (Requirements 4.5)
+        // Cache the isochrone result (Requirements 5.4)
         const newIsochrones = new globalThis.Map(isochrones)
         newIsochrones.set(point.id, result.data.generateIsochrone)
         setIsochrones(newIsochrones)
+
+        // Set this as the active isochrone (Requirements 5.1, 5.2)
+        setActiveIsochronePointId(point.id)
 
         showSuccess(
           'Isochrone Calculated',
@@ -397,6 +554,8 @@ const HomePage = () => {
         optimalPoints={optimalPoints}
         debugPoints={debugPoints}
         isochrones={isochrones}
+        activeIsochronePointId={activeIsochronePointId}
+        selectedOptimalPointId={selectedOptimalPointId}
         showDebugPoints={showAnchors || showGrid}
         showAnchors={showAnchors}
         showGrid={showGrid}
@@ -429,87 +588,34 @@ const HomePage = () => {
             />
           </div>
 
-          {/* Optimal Location Settings */}
+          {/* Isochrone Controls */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <h2 className="text-lg font-semibold text-gray-800 mb-3">
-              Optimal Location Settings
+              Calculation Settings
             </h2>
+            <IsochroneControls
+              travelMode={travelMode}
+              slackTime={slackTime}
+              meetingPointCount={meetingPointCount}
+              onTravelModeChange={setTravelMode}
+              onSlackTimeChange={setSlackTime}
+              onMeetingPointCountChange={handleMeetingPointCountChange}
+              onCalculate={handleCalculate}
+              isCalculating={isCalculating || isRecalculating}
+              canCalculate={canCalculate}
+            />
+          </div>
 
-            {/* Travel Mode Selection */}
-            <div className="mb-4">
-              <label
-                htmlFor="travel-mode"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Travel Mode
-              </label>
-              <div id="travel-mode" className="grid grid-cols-3 gap-2">
-                {[
-                  { value: 'DRIVING_CAR', label: 'Driving', icon: '🚗' },
-                  { value: 'CYCLING_REGULAR', label: 'Cycling', icon: '🚴' },
-                  { value: 'FOOT_WALKING', label: 'Walking', icon: '🚶' },
-                ].map((mode) => (
-                  <button
-                    key={mode.value}
-                    onClick={() => setTravelMode(mode.value as TravelMode)}
-                    className={`p-3 rounded-lg border text-sm font-medium transition-colors ${
-                      travelMode === mode.value
-                        ? 'bg-blue-50 border-blue-300 text-blue-700'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="text-lg mb-1">{mode.icon}</div>
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Optimization Goal Selection */}
+          {/* Optimization Goal Selection */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h2 className="text-lg font-semibold text-gray-800 mb-3">
+              Optimization Goal
+            </h2>
             <OptimizationGoals
               selectedGoal={optimizationGoal}
-              onGoalChange={handleOptimizationGoalChange}
+              onGoalChange={setOptimizationGoal}
               disabled={isCalculating || isRecalculating}
             />
-
-            {/* Isochrone Time Setting */}
-            <div className="mb-4">
-              <label
-                htmlFor="isochrone-time"
-                className="block text-sm font-medium text-gray-700 mb-2"
-              >
-                Isochrone Time (minutes)
-              </label>
-              <input
-                id="isochrone-time"
-                type="number"
-                min="5"
-                max="60"
-                value={slackTime}
-                onChange={(e) => setSlackTime(parseInt(e.target.value) || 10)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-600 mt-1">
-                Time range for on-demand isochrone visualization
-              </p>
-            </div>
-
-            {/* Calculate Button */}
-            <button
-              onClick={handleCalculate}
-              disabled={!canCalculate || isRecalculating}
-              className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-                canCalculate && !isRecalculating
-                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              {isCalculating
-                ? 'Finding Optimal Points...'
-                : isRecalculating
-                  ? 'Recalculating...'
-                  : 'Find Optimal Meeting Points'}
-            </button>
           </div>
 
           {/* Debug Controls Section */}
@@ -638,6 +744,16 @@ const HomePage = () => {
                             <strong>Cost-Controlled:</strong> Click any point on
                             the map to generate its isochrone on-demand.
                             Isochrones are cached to avoid repeated API calls.
+                            {activeIsochronePointId && (
+                              <div className="mt-2">
+                                <button
+                                  onClick={handleClearIsochrone}
+                                  className="text-blue-600 hover:text-blue-800 underline"
+                                >
+                                  Clear displayed isochrone
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -688,7 +804,11 @@ const HomePage = () => {
                             </div>
                             {isochrones.has(point.id) && (
                               <div className="text-xs text-green-600 mt-1">
-                                ✓ Isochrone shown
+                                {activeIsochronePointId === point.id ? (
+                                  <span>✓ Isochrone displayed</span>
+                                ) : (
+                                  <span>✓ Isochrone cached</span>
+                                )}
                               </div>
                             )}
                           </div>
