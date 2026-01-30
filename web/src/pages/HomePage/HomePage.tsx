@@ -619,7 +619,7 @@ const HomePage = () => {
           </div>
 
           {/* Debug Controls Section */}
-          {(optimalPoints.length > 0 || debugPoints.length > 0) && (
+          {(optimalPoints.length > 0 || debugPoints.length > 0) && false && (
             <DebugControls
               debugPoints={debugPoints}
               showAnchors={showAnchors}
@@ -630,217 +630,220 @@ const HomePage = () => {
           )}
 
           {/* Results Section */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold text-gray-800 mb-3">
-              Results
-            </h2>
+          {false && (
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h2 className="text-lg font-semibold text-gray-800 mb-3">
+                Results
+              </h2>
 
-            {calculationError && (
-              <div className="text-sm text-red-600 bg-red-50 p-3 rounded mb-4 border border-red-200">
-                <div className="flex items-start">
-                  <svg
-                    className="w-4 h-4 text-red-500 mt-0.5 mr-2 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z"
-                    />
-                  </svg>
-                  <div>
-                    <h4 className="font-medium">Calculation Error</h4>
-                    <p className="mt-1">{calculationError}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="text-center text-gray-500 py-8">
-              {isCalculating || isRecalculating ? (
-                <div className="flex items-center justify-center">
-                  <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-500"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
+              {calculationError && (
+                <div className="text-sm text-red-600 bg-red-50 p-3 rounded mb-4 border border-red-200">
+                  <div className="flex items-start">
+                    <svg
+                      className="w-4 h-4 text-red-500 mt-0.5 mr-2 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
                       stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  <div>
-                    <p className="font-medium">
-                      {isRecalculating
-                        ? 'Recalculating with new optimization goal...'
-                        : 'Finding optimal meeting points...'}
-                    </p>
-                    <p className="text-xs mt-1">
-                      {isRecalculating
-                        ? 'Rankings may change with different optimization criteria'
-                        : 'This may take a moment while we analyze travel times'}
-                    </p>
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 18.5c-.77.833.192 2.5 1.732 2.5z"
+                      />
+                    </svg>
+                    <div>
+                      <h4 className="font-medium">Calculation Error</h4>
+                      <p className="mt-1">{calculationError}</p>
+                    </div>
                   </div>
                 </div>
-              ) : optimalPoints.length > 0 ? (
-                <div className="text-left">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <div className="flex items-start">
-                      <svg
-                        className="w-5 h-5 text-blue-500 mt-0.5 mr-2 flex-shrink-0"
-                        fill="none"
-                        viewBox="0 0 24 24"
+              )}
+
+              <div className="text-center text-gray-500 py-8">
+                {isCalculating || isRecalculating ? (
+                  <div className="flex items-center justify-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-500"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
                         stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      <div>
-                        <h3 className="text-lg font-medium text-blue-800 mb-2">
-                          Optimal Meeting Points Found!
-                        </h3>
-                        <div className="text-sm text-blue-700 space-y-1">
-                          <div>
-                            <strong>Optimal Points:</strong>{' '}
-                            {optimalPoints.length} points
-                          </div>
-                          <div>
-                            <strong>Matrix API Calls:</strong> {matrixApiCalls}{' '}
-                            calls
-                          </div>
-                          <div>
-                            <strong>Total Hypothesis Points:</strong>{' '}
-                            {totalHypothesisPoints} points
-                          </div>
-                          <div>
-                            <strong>Travel Mode:</strong>{' '}
-                            {travelMode.replace('_', ' ').toLowerCase()}
-                          </div>
-                          <div>
-                            <strong>Optimization Goal:</strong>{' '}
-                            {optimizationGoal}
-                          </div>
-                          <div>
-                            <strong>Isochrone Time:</strong> {slackTime} minutes
-                          </div>
-                          <div className="mt-2 text-xs opacity-75">
-                            <strong>Cost-Controlled:</strong> Click any point on
-                            the map to generate its isochrone on-demand.
-                            Isochrones are cached to avoid repeated API calls.
-                            {activeIsochronePointId && (
-                              <div className="mt-2">
-                                <button
-                                  onClick={handleClearIsochrone}
-                                  className="text-blue-600 hover:text-blue-800 underline"
-                                >
-                                  Clear displayed isochrone
-                                </button>
-                              </div>
-                            )}
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    <div>
+                      <p className="font-medium">
+                        {isRecalculating
+                          ? 'Recalculating with new optimization goal...'
+                          : 'Finding optimal meeting points...'}
+                      </p>
+                      <p className="text-xs mt-1">
+                        {isRecalculating
+                          ? 'Rankings may change with different optimization criteria'
+                          : 'This may take a moment while we analyze travel times'}
+                      </p>
+                    </div>
+                  </div>
+                ) : optimalPoints.length > 0 ? (
+                  <div className="text-left">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-start">
+                        <svg
+                          className="w-5 h-5 text-blue-500 mt-0.5 mr-2 flex-shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <div>
+                          <h3 className="text-lg font-medium text-blue-800 mb-2">
+                            Optimal Meeting Points Found!
+                          </h3>
+                          <div className="text-sm text-blue-700 space-y-1">
+                            <div>
+                              <strong>Optimal Points:</strong>{' '}
+                              {optimalPoints.length} points
+                            </div>
+                            <div>
+                              <strong>Matrix API Calls:</strong>{' '}
+                              {matrixApiCalls} calls
+                            </div>
+                            <div>
+                              <strong>Total Hypothesis Points:</strong>{' '}
+                              {totalHypothesisPoints} points
+                            </div>
+                            <div>
+                              <strong>Travel Mode:</strong>{' '}
+                              {travelMode.replace('_', ' ').toLowerCase()}
+                            </div>
+                            <div>
+                              <strong>Optimization Goal:</strong>{' '}
+                              {optimizationGoal}
+                            </div>
+                            <div>
+                              <strong>Isochrone Time:</strong> {slackTime}{' '}
+                              minutes
+                            </div>
+                            <div className="mt-2 text-xs opacity-75">
+                              <strong>Cost-Controlled:</strong> Click any point
+                              on the map to generate its isochrone on-demand.
+                              Isochrones are cached to avoid repeated API calls.
+                              {activeIsochronePointId && (
+                                <div className="mt-2">
+                                  <button
+                                    onClick={handleClearIsochrone}
+                                    className="text-blue-600 hover:text-blue-800 underline"
+                                  >
+                                    Clear displayed isochrone
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Optimal Points List */}
-                  <div className="mt-4 bg-white p-4 rounded-lg border border-gray-200">
-                    <h4 className="font-medium text-gray-800 mb-3">
-                      Optimal Meeting Points
-                    </h4>
-                    <div className="space-y-2">
-                      {optimalPoints.map((point) => (
-                        <div
-                          key={point.id}
-                          className="flex items-center justify-between p-2 bg-gray-50 rounded"
-                        >
-                          <div className="flex items-center">
-                            <span className="w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center mr-3">
-                              {point.rank}
-                            </span>
-                            <div>
-                              <div className="font-medium text-sm">
-                                {point.id}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {point.coordinate.latitude.toFixed(4)},{' '}
-                                {point.coordinate.longitude.toFixed(4)}
+                    {/* Optimal Points List */}
+                    <div className="mt-4 bg-white p-4 rounded-lg border border-gray-200">
+                      <h4 className="font-medium text-gray-800 mb-3">
+                        Optimal Meeting Points
+                      </h4>
+                      <div className="space-y-2">
+                        {optimalPoints.map((point) => (
+                          <div
+                            key={point.id}
+                            className="flex items-center justify-between p-2 bg-gray-50 rounded"
+                          >
+                            <div className="flex items-center">
+                              <span className="w-6 h-6 bg-blue-500 text-white text-xs rounded-full flex items-center justify-center mr-3">
+                                {point.rank}
+                              </span>
+                              <div>
+                                <div className="font-medium text-sm">
+                                  {point.id}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {point.coordinate.latitude.toFixed(4)},{' '}
+                                  {point.coordinate.longitude.toFixed(4)}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xs text-gray-600">
-                              <div>
-                                Max:{' '}
-                                {point.travelTimeMetrics.maxTravelTime.toFixed(
-                                  1
-                                )}
-                                min
+                            <div className="text-right">
+                              <div className="text-xs text-gray-600">
+                                <div>
+                                  Max:{' '}
+                                  {point.travelTimeMetrics.maxTravelTime.toFixed(
+                                    1
+                                  )}
+                                  min
+                                </div>
+                                <div>
+                                  Avg:{' '}
+                                  {point.travelTimeMetrics.averageTravelTime.toFixed(
+                                    1
+                                  )}
+                                  min
+                                </div>
                               </div>
-                              <div>
-                                Avg:{' '}
-                                {point.travelTimeMetrics.averageTravelTime.toFixed(
-                                  1
-                                )}
-                                min
-                              </div>
+                              {isochrones.has(point.id) && (
+                                <div className="text-xs text-green-600 mt-1">
+                                  {activeIsochronePointId === point.id ? (
+                                    <span>✓ Isochrone displayed</span>
+                                  ) : (
+                                    <span>✓ Isochrone cached</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                            {isochrones.has(point.id) && (
-                              <div className="text-xs text-green-600 mt-1">
-                                {activeIsochronePointId === point.id ? (
-                                  <span>✓ Isochrone displayed</span>
-                                ) : (
-                                  <span>✓ Isochrone cached</span>
-                                )}
-                              </div>
-                            )}
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div>
-                  <svg
-                    className="w-12 h-12 text-gray-300 mx-auto mb-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3"
-                    />
-                  </svg>
-                  <p className="font-medium">Ready to Find Optimal Points</p>
-                  <p className="text-sm mt-1">
-                    Add at least 2 locations and click &ldquo;Find Optimal
-                    Meeting Points&rdquo; to get started.
-                  </p>
-                </div>
-              )}
+                ) : (
+                  <div>
+                    <svg
+                      className="w-12 h-12 text-gray-300 mx-auto mb-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-1.447-.894L15 4m0 13V4m-6 3l6-3"
+                      />
+                    </svg>
+                    <p className="font-medium">Ready to Find Optimal Points</p>
+                    <p className="text-sm mt-1">
+                      Add at least 2 locations and click &ldquo;Find Optimal
+                      Meeting Points&rdquo; to get started.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </MainLayout>
     </>

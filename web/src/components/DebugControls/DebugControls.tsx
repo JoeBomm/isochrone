@@ -270,8 +270,22 @@ const DebugControls = ({
                 <Typography variant="subtitle2" gutterBottom>
                   Statistics
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
-                  <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: 2,
+                    mb: 2,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      p: 1,
+                      bgcolor: 'grey.50',
+                      borderRadius: 1,
+                    }}
+                  >
                     <Typography variant="h6" color="primary">
                       {totalPoints}
                     </Typography>
@@ -279,7 +293,14 @@ const DebugControls = ({
                       Total Hypothesis Points
                     </Typography>
                   </Box>
-                  <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      p: 1,
+                      bgcolor: 'grey.50',
+                      borderRadius: 1,
+                    }}
+                  >
                     <Typography variant="h6" color="secondary">
                       {visibleDebugPoints}
                     </Typography>
@@ -287,7 +308,14 @@ const DebugControls = ({
                       Visible Debug Points
                     </Typography>
                   </Box>
-                  <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'primary.50', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      p: 1,
+                      bgcolor: 'primary.50',
+                      borderRadius: 1,
+                    }}
+                  >
                     <Typography variant="body2" fontWeight="medium">
                       {anchorPoints.length}
                     </Typography>
@@ -295,7 +323,14 @@ const DebugControls = ({
                       Anchor Points
                     </Typography>
                   </Box>
-                  <Box sx={{ textAlign: 'center', p: 1, bgcolor: 'grey.100', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      textAlign: 'center',
+                      p: 1,
+                      bgcolor: 'grey.100',
+                      borderRadius: 1,
+                    }}
+                  >
                     <Typography variant="body2" fontWeight="medium">
                       {gridPoints.length}
                     </Typography>
