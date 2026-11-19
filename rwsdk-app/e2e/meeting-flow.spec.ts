@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import { E2E } from "./env";
 import type { StubStats } from "./ors-stub";
+import { RATE_LIMITS } from "../src/server/rateLimit";
 
 /**
  * Core meeting flow against the real dev server (vite dev + local Worker),
@@ -14,7 +15,8 @@ import type { StubStats } from "./ors-stub";
  * 429, "island" places make every matrix duration null.
  *
  * Rate limiting is the app's real limiter (the Workers Rate Limiting binding,
- * simulated locally by Miniflare, FIND limit 10 per 60s per client). Each test
+ * simulated locally by Miniflare; FIND limit RATE_LIMITS.find per 60s per
+ * client, the same value wrangler.jsonc configures). Each test
  * gets its own client id through the CF-Connecting-IP header the app keys on
  * (src/server/rateLimit.ts), like distinct visitors behind Cloudflare's edge,
  * so tests don't share limiter buckets. The rate-limit tests exhaust their own
@@ -140,13 +142,14 @@ async function submitAndSettle(page: Page, press: () => Promise<void>) {
 }
 
 /**
- * Submit until the app's real rate limiter refuses (FIND limit: 10 per 60s
- * per client). Returns how many searches were made, the refused one included.
- * Fixed windows can reset mid-loop, hence the generous upper bound.
+ * Submit until the app's real rate limiter refuses (FIND limit:
+ * RATE_LIMITS.find per 60s per client). Returns how many searches were made,
+ * the refused one included. A fixed window can reset once mid-loop, hence the
+ * upper bound of two windows' worth plus one.
  */
 async function searchUntilRateLimited(page: Page, press: () => Promise<void>): Promise<number> {
   const countdown = page.locator(".countdown");
-  for (let n = 1; n <= 25; n += 1) {
+  for (let n = 1; n <= 2 * RATE_LIMITS.find + 1; n += 1) {
     await submitAndSettle(page, press);
     if (await countdown.isVisible()) return n;
     await expect(page.getByRole("list", { name: "Meeting points" })).toBeVisible();
@@ -216,7 +219,7 @@ test("rate_limited: the real limiter refuses, the countdown runs, submit re-enab
   await addPeople(page, NORWICH, CAMBRIDGE);
 
   const searches = await searchUntilRateLimited(page, () => submitButton(page).click());
-  expect(searches, "searches allowed before the limiter refused").toBeGreaterThan(10);
+  expect(searches, "searches allowed before the limiter refused").toBeGreaterThan(RATE_LIMITS.find);
 
   // Freeze the page clock, then tick the countdown one second at a time. (The
   // countdown is a chain of 1s timeouts, each scheduled after React renders

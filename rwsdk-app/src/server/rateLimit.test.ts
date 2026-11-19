@@ -1,13 +1,42 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   checkRateLimit,
   clientIdFromHeaders,
   FALLBACK_CLIENT_ID,
+  RATE_LIMIT_PERIOD_SECONDS,
+  RATE_LIMITS,
   type RateLimiterLike,
 } from "./rateLimit";
 import { fakeLimiter } from "./testLimiter";
 
 afterEach(() => vi.restoreAllMocks());
+
+describe("wrangler.jsonc ratelimits", () => {
+  // One binding per line: { "name": ..., "namespace_id": ..., "simple": { "limit": N, "period": P } }
+  const config = readFileSync(new URL("../../wrangler.jsonc", import.meta.url), "utf8");
+  const bindings = new Map(
+    [...config.matchAll(/"name":\s*"(\w+_RATE_LIMITER)".*?"limit":\s*(\d+),\s*"period":\s*(\d+)/g)].map((m) => [
+      m[1],
+      { limit: Number(m[2]), period: Number(m[3]) },
+    ]),
+  );
+
+  it("match RATE_LIMITS and RATE_LIMIT_PERIOD_SECONDS", () => {
+    expect(Object.fromEntries(bindings)).toEqual({
+      FIND_RATE_LIMITER: { limit: RATE_LIMITS.find, period: RATE_LIMIT_PERIOD_SECONDS },
+      ISOCHRONE_RATE_LIMITER: { limit: RATE_LIMITS.isochrone, period: RATE_LIMIT_PERIOD_SECONDS },
+      GEOCODE_RATE_LIMITER: { limit: RATE_LIMITS.geocode, period: RATE_LIMIT_PERIOD_SECONDS },
+    });
+  });
+
+  it("keep each per-client limit below the ORS Standard plan's per-minute quota", () => {
+    // ORS Standard plan (checked 2026-11-19): matrix 40/min, isochrones 20/min, geocode 100/min.
+    expect(RATE_LIMITS.find).toBeLessThan(40);
+    expect(RATE_LIMITS.isochrone).toBeLessThan(20);
+    expect(RATE_LIMITS.geocode).toBeLessThan(100);
+  });
+});
 
 describe("checkRateLimit", () => {
   it("allows N requests in the window and denies the (N+1)th with retryAfterSeconds", async () => {

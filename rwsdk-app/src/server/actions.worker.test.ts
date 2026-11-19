@@ -11,7 +11,7 @@ import {
 import { cacheKey } from "./cache";
 import type { OrsClient } from "./ors/client";
 import { OrsError } from "./ors/errors";
-import { checkRateLimit } from "./rateLimit";
+import { checkRateLimit, RATE_LIMIT_PERIOD_SECONDS, RATE_LIMITS } from "./rateLimit";
 
 // Runs in workerd against the built worker's wrangler config: real KV
 // namespace and real (Miniflare-simulated) Rate Limiting bindings. ORS is
@@ -20,8 +20,10 @@ import { checkRateLimit } from "./rateLimit";
 const A = { lat: 52.52, lng: 13.405 };
 const B = { lat: 52.5, lng: 13.3 };
 const POLY = { type: "Polygon" as const, coordinates: [[[13.4, 52.5], [13.5, 52.5], [13.4, 52.6], [13.4, 52.5]]] };
-const FIND_LIMIT = 10; // wrangler.jsonc FIND_RATE_LIMITER.simple.limit
-const GEOCODE_LIMIT = 30; // wrangler.jsonc GEOCODE_RATE_LIMITER.simple.limit
+// Mirrors of wrangler.jsonc's simple.limit (rateLimit.test.ts checks they match).
+const FIND_LIMIT = RATE_LIMITS.find;
+const ISOCHRONE_LIMIT = RATE_LIMITS.isochrone;
+const GEOCODE_LIMIT = RATE_LIMITS.geocode;
 
 function fakeOrs() {
   const matrix = vi.fn(async (o: Coordinate[], d: Coordinate[]) => o.map((_, i) => d.map((_, j) => 60 * (i + j + 1))));
@@ -51,15 +53,20 @@ describe("Rate Limiting bindings (workerd)", () => {
     expect(typeof env.GEOCODE_RATE_LIMITER.limit).toBe("function");
   });
 
-  it("deny the (N+1)th request in the window with retryAfterSeconds, per client", async () => {
-    for (let i = 0; i < GEOCODE_LIMIT; i++) {
-      expect(await checkRateLimit(env.GEOCODE_RATE_LIMITER, "rl-client-1")).toEqual({ allowed: true });
+  it.each([
+    ["FIND_RATE_LIMITER", FIND_LIMIT],
+    ["ISOCHRONE_RATE_LIMITER", ISOCHRONE_LIMIT],
+    ["GEOCODE_RATE_LIMITER", GEOCODE_LIMIT],
+  ] as const)("%s denies the (N+1)th request in the window (N = %i) with retryAfterSeconds, per client", async (name, n) => {
+    const limiter = env[name];
+    for (let i = 0; i < n; i++) {
+      expect(await checkRateLimit(limiter, `rl-${name}-1`)).toEqual({ allowed: true });
     }
-    expect(await checkRateLimit(env.GEOCODE_RATE_LIMITER, "rl-client-1")).toEqual({
+    expect(await checkRateLimit(limiter, `rl-${name}-1`)).toEqual({
       allowed: false,
-      retryAfterSeconds: 60,
+      retryAfterSeconds: RATE_LIMIT_PERIOD_SECONDS,
     });
-    expect(await checkRateLimit(env.GEOCODE_RATE_LIMITER, "rl-client-2")).toEqual({ allowed: true });
+    expect(await checkRateLimit(limiter, `rl-${name}-2`)).toEqual({ allowed: true });
   });
 });
 
@@ -74,7 +81,7 @@ describe("handlers with real bindings", () => {
     const r = await handleFindMeetingPoints({ participants: [A, B] }, s.d);
     expect(r).toEqual({
       ok: false,
-      error: { code: "rate_limited", message: expect.any(String), retryAfterSeconds: 60 },
+      error: { code: "rate_limited", message: expect.any(String), retryAfterSeconds: RATE_LIMIT_PERIOD_SECONDS },
     });
     expect(s.createOrs.mock.calls.length).toBe(constructed);
   });

@@ -33,13 +33,27 @@
   // user-chosen positive integer (as a string) that must be unique within the
   // Cloudflare account; no resource has to be created. `period` must be 10
   // or 60 and must match RATE_LIMIT_PERIOD_SECONDS. Limits are approximate
-  // and per Cloudflare location. Find (one ORS matrix call) is the most
-  // expensive action, so it gets the tightest limit; geocode is cheapest.
-  // The ORS key's own quota is shared by all clients and still applies
-  // (surfaced to users as the 'quota' error).
+  // and per Cloudflare location. The limits mirror RATE_LIMITS in
+  // src/server/rateLimit.ts (a test checks they match), which documents the
+  // arithmetic.
+  //
+  // Sized against the ORS Standard (free) plan, checked 2026-11-19:
+  // matrix 500/day 40/min, isochrones 500/day 20/min, geocode search
+  // 1000/day 100/min. One uncached action = one ORS request.
+  //   find       5/min: one IP drains matrix in 500/5 = 100 min
+  //   isochrone  6/min: one IP drains isochrones in 500/6 ≈ 83 min
+  //   geocode   30/min: one IP drains geocode in 1000/30 ≈ 33 min
+  //                     (kept: normal typing needs the headroom)
+  //
+  // RESIDUAL RISK: these cap a client per minute; they are NOT a daily
+  // budget, which the binding cannot express. A client varying its inputs
+  // (no cache hits) can still drain the shared ORS daily quota: N IPs at the
+  // limit send N x limit x 1440 requests/day, so one IP drains it in the
+  // times above, N IPs in 1/N of that. Users then get the 'quota' error until
+  // ORS renews the quota. A strict global budget would need a Durable Object.
   "ratelimits": [
-    { "name": "FIND_RATE_LIMITER", "namespace_id": "4601", "simple": { "limit": 10, "period": 60 } },
-    { "name": "ISOCHRONE_RATE_LIMITER", "namespace_id": "4602", "simple": { "limit": 10, "period": 60 } },
+    { "name": "FIND_RATE_LIMITER", "namespace_id": "4601", "simple": { "limit": 5, "period": 60 } },
+    { "name": "ISOCHRONE_RATE_LIMITER", "namespace_id": "4602", "simple": { "limit": 6, "period": 60 } },
     { "name": "GEOCODE_RATE_LIMITER", "namespace_id": "4603", "simple": { "limit": 30, "period": 60 } }
   ],
 
