@@ -1,6 +1,6 @@
 # UX direction: "Halfway" meeting-point finder
 
-Status: PROPOSED, awaiting user approval (plan Task 7, Step 1). Nothing in `rwsdk-app/src/app` is built from this until approved.
+Status: APPROVED by the user as written (plan Task 7, Step 1), including the placeholder name "Halfway", dark mode in v1, and the proposed goal labels.
 
 ## Subject and job
 
