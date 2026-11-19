@@ -65,3 +65,7 @@ coverage
 
 # Wrangler
 .wrangler
+# Playwright (e2e)
+test-results/
+playwright-report/
+blob-report/

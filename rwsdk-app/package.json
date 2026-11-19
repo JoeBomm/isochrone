@@ -21,7 +21,8 @@
     "check": "npm run generate && npm run types",
     "types": "tsc",
     "test": "vitest run",
-    "test:worker": "npm run build && vitest run --config vitest.worker.config.ts"
+    "test:worker": "npm run build && vitest run --config vitest.worker.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource-variable/schibsted-grotesk": "^5.3.0",
@@ -35,6 +36,7 @@
     "@cloudflare/vite-plugin": "1.50.0",
     "@cloudflare/vitest-plugin": "^1.8.5",
     "@cloudflare/workers-types": "5.20260801.1",
+    "@playwright/test": "^1.65.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.13",
