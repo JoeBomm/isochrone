@@ -1,4 +1,6 @@
+import { AppShell } from "@/app/components/shell/AppShell";
 import { Alert, Button, Card, Field, Select, Spinner } from "@/app/components/ui";
+import { MeetingFormDemo } from "./MeetingFormDemo";
 import sgStyles from "./styleguide.css?url";
 
 /**
@@ -51,7 +53,8 @@ export const Styleguide = () => (
       <p className="muted">
         Every primitive in every state. Press Tab to walk through the controls:
         each one shows a 3px harbour focus ring. Switch your system to dark mode
-        to check the dark scheme. The app shell is at <a href="/">/</a>.
+        to check the dark scheme. The app shell is at <a href="/">/</a>, and the
+        meeting form inside the shell is at <a href="/_styleguide/form">/_styleguide/form</a>.
       </p>
     </header>
 
@@ -210,3 +213,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </section>
   );
 }
+
+/**
+ * /_styleguide/form: the participant and options form (Task 8) inside the app
+ * shell, with a fake submit. Dev only, like /_styleguide. Address search calls
+ * the real geocodeAction.
+ */
+export const StyleguideForm = () => (
+  <AppShell>
+    <MeetingFormDemo />
+  </AppShell>
+);

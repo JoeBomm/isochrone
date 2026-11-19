@@ -39,6 +39,22 @@ const UI_PAIRS: Array<[fg: string, bg: string]> = [
   ["ink", "surface"], // select chevron
 ];
 
+// Participant badges (ParticipantList): a person-coloured disc with the
+// initial in --person-N-on, ringed with --person-ring. Several person colours
+// are below 3:1 on --surface (e.g. #56B4E9 is 2.3:1), so the ring, not the
+// fill, carries the 3:1 edge against the panel and inputs.
+const PERSONS = [1, 2, 3, 4, 5, 6];
+const BADGE_TEXT_PAIRS: Array<[fg: string, bg: string]> = PERSONS.map((n) => [
+  `person-${n}-on`,
+  `person-${n}`,
+]);
+const BADGE_RING_PAIRS: Array<[fg: string, bg: string]> = [
+  ["person-ring", "surface"],
+  ["person-ring", "paper"],
+];
+TEXT_PAIRS.push(...BADGE_TEXT_PAIRS);
+UI_PAIRS.push(...BADGE_RING_PAIRS);
+
 const schemes = parseSchemes(tokensCss);
 
 describe.each(["light", "dark"] as const)("%s scheme contrast", (name) => {

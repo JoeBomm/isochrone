@@ -4,14 +4,14 @@ import { defineApp } from "rwsdk/worker";
 import { Document } from "@/app/document";
 import { setCommonHeaders } from "@/app/headers";
 import { Home } from "@/app/pages/home";
-import { Styleguide } from "@/app/pages/styleguide";
+import { Styleguide, StyleguideForm } from "@/app/pages/styleguide";
 
 export type AppContext = {};
 
-// /_styleguide is a review tool, registered only on the Vite dev server
-// (`npm run dev`). Production builds do not route it (404).
+// /_styleguide and /_styleguide/form are review tools, registered only on the
+// Vite dev server (`npm run dev`). Production builds do not route them (404).
 const devRoutes = import.meta.env.VITE_IS_DEV_SERVER
-  ? [route("/_styleguide", Styleguide)]
+  ? [route("/_styleguide", Styleguide), route("/_styleguide/form", StyleguideForm)]
   : [];
 
 export default defineApp([
