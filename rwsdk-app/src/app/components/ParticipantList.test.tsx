@@ -272,8 +272,14 @@ describe("MeetingForm: page integration", () => {
     const { user, onSubmit, rerender, container } = setup();
     await resolveRow(user, 0, "Carrow Road");
     await resolveRow(user, 1, "Mill Lane");
+    submitButton().focus();
     rerender(<MeetingForm onSubmit={onSubmit} pending={false} blocked />);
-    expect((submitButton() as HTMLButtonElement).disabled).toBe(true);
+    // aria-disabled, not native disabled: a focused button must keep focus
+    expect((submitButton() as HTMLButtonElement).disabled).toBe(false);
+    expect(submitButton().getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(submitButton());
+    await user.keyboard("{Enter}");
+    expect(onSubmit).not.toHaveBeenCalled();
     act(() => {
       container.querySelector("form")!.requestSubmit();
     });

@@ -92,6 +92,32 @@ describe("Alert", () => {
 });
 
 describe("Button", () => {
+  it("softDisabled keeps focus, is aria-disabled (not native disabled) and swallows click and submit", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    const onSubmit = vi.fn((e: { preventDefault(): void }) => e.preventDefault());
+    const { rerender } = render(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" onClick={onClick}>Find meeting points</Button>
+      </form>,
+    );
+    const button = screen.getByRole("button", { name: "Find meeting points" }) as HTMLButtonElement;
+    button.focus();
+    rerender(
+      <form onSubmit={onSubmit}>
+        <Button type="submit" onClick={onClick} softDisabled>Find meeting points</Button>
+      </form>,
+    );
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.hasAttribute("aria-busy")).toBe(false);
+    expect(document.activeElement).toBe(button);
+    await user.keyboard("{Enter}");
+    await user.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("defaults to type=button and calls onClick", async () => {
     const onClick = vi.fn();
     render(<Button onClick={onClick}>Find meeting points</Button>);

@@ -105,11 +105,17 @@ function SearchError({
   onRetry: () => void;
 }) {
   if (error.code === "rate_limited") {
+    // Distinct keys: the alert -> status switch remounts the element, so the
+    // new live region is announced reliably.
     if (!retryIn) {
-      return <Alert tone="info">{COPY.canRetry}</Alert>;
+      return (
+        <Alert key="rate-ready" tone="info">
+          {COPY.canRetry}
+        </Alert>
+      );
     }
     return (
-      <Alert tone="error">
+      <Alert key="rate-wait" tone="error">
         <span className="visually-hidden">{COPY.rateLimited(retrySeconds(error.retryAfterSeconds))}</span>
         {/* Only the number is tabular: tnum also widens the full stops. */}
         <span className="countdown" aria-hidden="true">
@@ -175,6 +181,8 @@ export interface PeekSummaryProps {
   /** id of the meeting form, so this button submits it from outside. */
   formId: string;
   onExpand: () => void;
+  /** The status line; focusable (tabIndex -1) so focus can land here at peek. */
+  textRef?: Ref<HTMLParagraphElement>;
 }
 
 /**
@@ -192,6 +200,7 @@ export function PeekSummary({
   pending,
   formId,
   onExpand,
+  textRef,
 }: PeekSummaryProps) {
   let text: string;
   if (state.status === "loading") text = "Finding meeting points.";
@@ -214,7 +223,7 @@ export function PeekSummary({
 
   return (
     <div className="peek">
-      <p className="peek__text">
+      <p className="peek__text" tabIndex={-1} ref={textRef}>
         {isochrone === "loading" ? <Spinner size="sm" decorative /> : null}
         <span>{text}</span>
       </p>
@@ -223,7 +232,7 @@ export function PeekSummary({
           type="submit"
           form={formId}
           className="peek__action"
-          disabled={Boolean(retryIn)}
+          softDisabled={Boolean(retryIn)}
           loading={pending}
           loadingLabel="Finding meeting points"
         >

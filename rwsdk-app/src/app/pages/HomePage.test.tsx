@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScoredCandidate } from "@/domain/scoring";
 
 const mapProps = vi.hoisted(() => ({ last: null as null | Record<string, any> }));
+const fakeForm = vi.hoisted(() => ({ canSubmit: true }));
 
 vi.mock("@/server/actions", () => ({
   findMeetingPointsAction: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock("@/app/components/MeetingMap", () => ({
 // This stand-in has the same props contract.
 vi.mock("@/app/components/MeetingForm", () => ({
   MeetingForm: (props: Record<string, any>) => {
-    useEffect(() => props.onCanSubmitChange?.(true), []);
+    useEffect(() => props.onCanSubmitChange?.(fakeForm.canSubmit), []);
     return (
       <form
         id={props.formId}
@@ -42,7 +43,8 @@ vi.mock("@/app/components/MeetingForm", () => ({
           props.onSubmit(VALUES);
         }}
       >
-        <button type="submit" disabled={props.blocked} aria-busy={props.pending || undefined}>
+        <input role="combobox" aria-label="Starting address for Person 1" />
+        <button type="submit" aria-disabled={props.blocked || undefined} aria-busy={props.pending || undefined}>
           {props.pending ? "Finding meeting points" : "Find meeting points"}
         </button>
       </form>
@@ -110,7 +112,21 @@ function deferred<T>() {
 type FindReturn = Awaited<ReturnType<typeof findMeetingPointsAction>>;
 type IsoReturn = Awaited<ReturnType<typeof getIsochroneAction>>;
 
+/** Simulate the < 960px layout (bottom sheet) or the desktop side panel. */
+function layout(kind: "mobile" | "desktop") {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: kind === "desktop" && query.includes("min-width"),
+        media: query,
+        addEventListener() {},
+        removeEventListener() {},
+      }) as unknown as MediaQueryList,
+  );
+}
+
 beforeEach(() => {
+  fakeForm.canSubmit = true;
   find.mockReset();
   iso.mockReset();
   mapProps.last = null;
@@ -212,13 +228,18 @@ describe("HomePage: search states", () => {
     await act(async () => {});
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("Try again in 3 seconds.");
-    expect((submit() as HTMLButtonElement).disabled).toBe(true);
+    // the peek button is unavailable but stays focusable (aria-disabled, not disabled)
+    expect((submit() as HTMLButtonElement).disabled).toBe(false);
+    expect(submit().getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(submit());
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
     expect(screen.getByRole("alert").textContent).toContain("Try again in 2 seconds.");
-    expect((submit() as HTMLButtonElement).disabled).toBe(true);
+    expect(submit().getAttribute("aria-disabled")).toBe("true");
+    await user.keyboard("{Enter}"); // blocked: no new search
+    expect(find).toHaveBeenCalledTimes(1);
 
     // one tick per second (each tick schedules the next after React commits)
     for (let i = 0; i < 2; i += 1) {
@@ -229,7 +250,7 @@ describe("HomePage: search states", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     const region = screen.getByRole("region", { name: "Meeting points" });
     expect(within(region).getByRole("status").textContent).toContain("You can search again now.");
-    expect((submit() as HTMLButtonElement).disabled).toBe(false);
+    expect(submit().hasAttribute("aria-disabled")).toBe(false);
   });
 });
 
@@ -384,3 +405,91 @@ describe("HomePage: ?debug=1 hypothesis layer", () => {
     expect(screen.getByText("Debug: the map shows all 2 candidate points.")).toBeTruthy();
   });
 });
+
+describe("HomePage: announcements and focus with the mobile sheet", () => {
+  const liveRegion = () => document.querySelector("[data-announcer]") as HTMLElement;
+
+  it("announces isochrone status from a live region outside the sheet body (hidden at peek)", async () => {
+    const user = userEvent.setup();
+    render(<HomePage debug={false} />);
+    // present from the first render, so later text changes are announced
+    expect(liveRegion()).toBeTruthy();
+    expect(liveRegion().getAttribute("role")).toBe("status");
+    expect(liveRegion().closest(".sheet__body")).toBeNull();
+    expect(liveRegion().closest(".sheet")).toBeNull();
+
+    await searchOk(user);
+    const pending = deferred<IsoReturn>();
+    iso.mockReturnValueOnce(pending.promise).mockResolvedValueOnce({ ok: false, error: { code: "upstream", message: "x" } });
+    await user.click(resultButtons()[0]);
+    expect(liveRegion().textContent).toBe("Loading reachable area.");
+    await act(async () => pending.resolve({ ok: true, data: { geometry: polygon(1) } }));
+    expect(liveRegion().textContent).toBe("The map shows everywhere within 15 minutes of the meeting point.");
+    await user.click(screen.getByRole("button", { name: "Map marker 2" }));
+    await act(async () => {});
+    expect(liveRegion().textContent).toBe("We couldn't load the reachable area.");
+  });
+
+  it("mobile: selecting from the list moves focus to the peek summary (the row is hidden at peek)", async () => {
+    layout("mobile");
+    const user = userEvent.setup();
+    render(<HomePage debug={false} />);
+    await searchOk(user);
+    iso.mockResolvedValueOnce({ ok: true, data: { geometry: polygon(1) } });
+    await user.click(resultButtons()[1]);
+    expect(sheet().getAttribute("data-snap")).toBe("peek");
+    const summaryText = document.querySelector(".sheet__summary .peek__text") as HTMLElement;
+    expect(document.activeElement).toBe(summaryText);
+    expect(summaryText.textContent).toContain("Meeting point 2 of 3");
+  });
+
+  it("mobile: selecting from the map keeps focus on the marker; desktop keeps focus on the row", async () => {
+    layout("mobile");
+    const user = userEvent.setup();
+    const { unmount } = render(<HomePage debug={false} />);
+    await searchOk(user);
+    iso.mockResolvedValue({ ok: true, data: { geometry: polygon(1) } });
+    const marker = screen.getByRole("button", { name: "Map marker 1" });
+    await user.click(marker);
+    expect(document.activeElement).toBe(marker);
+    unmount();
+
+    layout("desktop");
+    render(<HomePage debug={false} />);
+    await searchOk(user);
+    await user.click(resultButtons()[2]);
+    expect(document.activeElement).toBe(resultButtons()[2]);
+  });
+
+  it("submitting from the peek summary: focus moves to the form's submit button, and stays there on error", async () => {
+    layout("mobile");
+    const user = userEvent.setup();
+    render(<HomePage debug={false} />);
+    await searchOk(user);
+    iso.mockResolvedValueOnce({ ok: true, data: { geometry: polygon(1) } });
+    await user.click(resultButtons()[0]); // snaps to peek
+    const peekButton = within(document.querySelector(".sheet__summary") as HTMLElement).getByRole("button", {
+      name: "Find meeting points",
+    });
+    find.mockResolvedValueOnce({ ok: false, error: { code: "quota", message: "x" } });
+    await user.click(peekButton);
+    const formButton = document.querySelector("form button[type=submit]") as HTMLElement;
+    expect(sheet().getAttribute("data-snap")).toBe("half");
+    expect(document.activeElement).toBe(formButton);
+    await screen.findByRole("alert");
+    expect(document.activeElement).toBe(formButton);
+  });
+
+  it("Add people (peek, nobody resolved) expands the sheet and focuses the first address field", async () => {
+    layout("mobile");
+    fakeForm.canSubmit = false;
+    const user = userEvent.setup();
+    render(<HomePage debug={false} />);
+    await user.click(screen.getByRole("button", { name: "Expand panel to full screen" })); // half -> full
+    await user.click(screen.getByRole("button", { name: "Collapse panel" })); // full -> peek
+    await user.click(screen.getByRole("button", { name: "Add people" }));
+    expect(sheet().getAttribute("data-snap")).toBe("half");
+    expect(document.activeElement).toBe(screen.getByRole("combobox", { name: "Starting address for Person 1" }));
+  });
+});
+

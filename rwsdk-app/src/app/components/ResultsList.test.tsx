@@ -237,7 +237,10 @@ describe("ResultsPanel states", () => {
       />,
     );
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("You can search again now.");
+    const status = screen.getByRole("status");
+    expect(status.textContent).toContain("You can search again now.");
+    // a new element (keyed remount), so the role change is announced reliably
+    expect(status).not.toBe(again);
   });
 
   it("shows the debug candidate count only when given", () => {

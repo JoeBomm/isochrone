@@ -7,6 +7,7 @@ import { MeetingMap } from "@/app/components/MeetingMap";
 import { GOALS } from "@/app/components/participants";
 import { PeekSummary, ResultsPanel } from "@/app/components/ResultsPanel";
 import {
+  DESKTOP_MIN_WIDTH,
   errorCopy,
   MODE_LABEL,
   retrySeconds,
@@ -52,6 +53,13 @@ function isochroneErrorDetail(error: Parameters<typeof errorCopy>[0]): string {
   return retry ? "" : message;
 }
 
+const isMobileLayout = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia?.(`(min-width: ${DESKTOP_MIN_WIDTH}px)`).matches !== true;
+
+const focusIsIn = (selector: string) =>
+  document.activeElement instanceof Element && document.activeElement.closest(selector) !== null;
+
 export interface HomePageProps {
   /** `?debug=1`: show every evaluated candidate on the map (read on the server). */
   debug: boolean;
@@ -87,6 +95,12 @@ export function HomePage({ debug }: HomePageProps) {
   const isoCache = useRef(new Map<string, IsochroneGeometry>());
   const headingRef = useRef<HTMLHeadingElement>(null);
   const revealResults = useRef(false);
+  const summaryTextRef = useRef<HTMLParagraphElement>(null);
+  const snapRef = useRef(snap);
+  snapRef.current = snap;
+  // Focus to move once a snap change has rendered (the target may only become
+  // visible with the new snap, e.g. the peek summary).
+  const focusAfterSnap = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -94,6 +108,17 @@ export function HomePage({ debug }: HomePageProps) {
       mounted.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    const run = focusAfterSnap.current;
+    focusAfterSnap.current = null;
+    run?.();
+  }, [snap]);
+
+  const formControl = useCallback(
+    (selector: string) => document.getElementById(formId)?.querySelector<HTMLElement>(selector) ?? null,
+    [formId],
+  );
 
   // Rate-limit countdown: one tick per second; at 0 the button is enabled again.
   useEffect(() => {
@@ -126,6 +151,13 @@ export function HomePage({ debug }: HomePageProps) {
     setIso({ status: "idle" });
     setRetryIn(null);
     setSearch({ status: "loading" });
+    // Submitted from the peek summary: the summary is hidden at half, so its
+    // focused button would drop focus to <body>. Move focus to the form's own
+    // submit button (visible at half); on success it then moves to the
+    // results heading, on error it stays there.
+    if (snapRef.current === "peek" && focusIsIn(".sheet__summary")) {
+      focusAfterSnap.current = () => formControl('button[type="submit"]')?.focus();
+    }
     setSnap((s) => (s === "peek" ? "half" : s));
     setAnnouncement("Finding meeting points.");
     let outcome: SearchState;
@@ -145,7 +177,7 @@ export function HomePage({ debug }: HomePageProps) {
       if (outcome.error.code === "rate_limited") setRetryIn(retrySeconds(outcome.error.retryAfterSeconds));
     }
     setSearch(outcome);
-  }, []);
+  }, [formControl]);
 
   const loadIsochrone = useCallback(
     async (point: ScoredCandidate) => {
@@ -157,6 +189,7 @@ export function HomePage({ debug }: HomePageProps) {
       const cachedGeometry = isoCache.current.get(key);
       if (cachedGeometry) {
         setIso({ status: "ready", pointId: point.id, geometry: cachedGeometry });
+        setAnnouncement(`The map shows everywhere within ${minutes} minutes of the meeting point.`);
         return;
       }
       setIso({ status: "loading", pointId: point.id });
@@ -185,6 +218,13 @@ export function HomePage({ debug }: HomePageProps) {
   const select = useCallback(
     (point: ScoredCandidate) => {
       setSelectedId(point.id);
+      // On mobile, selecting from the list collapses the sheet to peek, which
+      // hides the focused row: move focus to the peek summary that now
+      // describes the selection. (From the map, focus stays on the marker; on
+      // desktop nothing is hidden.)
+      if (snapRef.current !== "peek" && isMobileLayout() && focusIsIn(".sheet__body")) {
+        focusAfterSnap.current = () => summaryTextRef.current?.focus();
+      }
       setSnap("peek");
       void loadIsochrone(point);
     },
@@ -236,12 +276,28 @@ export function HomePage({ debug }: HomePageProps) {
       canSubmit={canSubmit}
       pending={pending}
       formId={formId}
-      onExpand={() => setSnap("half")}
+      onExpand={() => {
+        focusAfterSnap.current = () => formControl('[role="combobox"]')?.focus();
+        setSnap("half");
+      }}
+      textRef={summaryTextRef}
     />
   );
 
   return (
-    <AppShell map={map} snap={snap} onSnapChange={setSnap} summary={summary}>
+    <AppShell
+      map={map}
+      snap={snap}
+      onSnapChange={setSnap}
+      summary={summary}
+      live={
+        // Outside the sheet: its body is display:none at peek, which is
+        // exactly when isochrone updates happen.
+        <p className="visually-hidden" role="status" aria-live="polite" data-announcer="">
+          {announcement}
+        </p>
+      }
+    >
       <MeetingForm
         formId={formId}
         pending={pending}
@@ -264,9 +320,6 @@ export function HomePage({ debug }: HomePageProps) {
         debugCount={debug && search.status === "success" ? search.result.debugCandidates.length : null}
         headingRef={headingRef}
       />
-      <p className="visually-hidden" role="status" aria-live="polite">
-        {announcement}
-      </p>
     </AppShell>
   );
 }

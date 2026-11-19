@@ -12,6 +12,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
   /** Text shown while loading, e.g. "Finding meeting points". */
   loadingLabel?: string;
+  /**
+   * Unavailable for now but keeps focus: aria-disabled plus a click guard
+   * (also blocks a submit), instead of native `disabled`, which would drop a
+   * focused button's focus to <body>. Use when a control is disabled while
+   * it may have focus (e.g. a rate-limit countdown after pressing it).
+   */
+  softDisabled?: boolean;
 }
 
 /**
@@ -30,6 +37,7 @@ export function Button({
   variant = "primary",
   loading = false,
   loadingLabel,
+  softDisabled = false,
   disabled,
   className,
   children,
@@ -37,8 +45,9 @@ export function Button({
   onClick,
   ...rest
 }: ButtonProps) {
+  const inactive = loading || softDisabled;
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    if (loading) {
+    if (inactive) {
       event.preventDefault();
       return;
     }
@@ -51,9 +60,10 @@ export function Button({
       type={type}
       className={cx("ui-btn", `ui-btn--${variant}`, className)}
       disabled={disabled}
-      aria-disabled={loading || undefined}
+      aria-disabled={inactive || undefined}
       aria-busy={loading || undefined}
       data-loading={loading || undefined}
+      data-soft-disabled={(softDisabled && !loading) || undefined}
       onClick={handleClick}
     >
       {loading ? <Spinner size="sm" decorative /> : null}

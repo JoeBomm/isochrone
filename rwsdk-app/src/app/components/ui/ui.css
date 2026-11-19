@@ -71,6 +71,18 @@
   cursor: progress;
 }
 
+/* softDisabled: looks like :disabled but stays focusable (see Button.tsx). */
+.ui-btn[data-soft-disabled] {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.ui-btn[data-soft-disabled]:hover {
+  background: transparent;
+}
+
 .ui-btn__label {
   display: inline-block;
 }

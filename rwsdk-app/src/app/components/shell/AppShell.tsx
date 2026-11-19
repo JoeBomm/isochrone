@@ -13,6 +13,12 @@ export interface AppShellProps {
   onSnapChange?: (snap: SheetSnap) => void;
   /** Peek-state summary for the mobile sheet; see BottomSheet. */
   summary?: ReactNode;
+  /**
+   * Page-level live region(s). Rendered outside the sheet so they are never
+   * inside the body that is hidden at peek (display:none content is not
+   * announced).
+   */
+  live?: ReactNode;
 }
 
 /**
@@ -22,7 +28,7 @@ export interface AppShellProps {
  * The panel comes first in the DOM so keyboard and screen reader users reach
  * the controls before the (supplementary) map.
  */
-export function AppShell({ children, map, snap, onSnapChange, summary }: AppShellProps) {
+export function AppShell({ children, map, snap, onSnapChange, summary, live }: AppShellProps) {
   return (
     <main className="shell">
       <BottomSheet labelledBy="app-title" snap={snap} onSnapChange={onSnapChange} summary={summary}>
@@ -34,6 +40,7 @@ export function AppShell({ children, map, snap, onSnapChange, summary }: AppShel
       <section className="shell__map" aria-label="Map">
         {map ?? <MapPlaceholder />}
       </section>
+      {live}
     </main>
   );
 }

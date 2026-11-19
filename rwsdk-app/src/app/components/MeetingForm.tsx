@@ -210,7 +210,10 @@ export function MeetingForm({
         <Button
           type="submit"
           className="meeting-form__submit"
-          disabled={!canSubmit || blocked}
+          disabled={!canSubmit}
+          // A countdown can start while this button has focus: aria-disabled
+          // keeps focus where native disabled would drop it to <body>.
+          softDisabled={blocked}
           loading={pending}
           loadingLabel="Finding meeting points"
           aria-describedby={canSubmit ? undefined : submitHintId}
