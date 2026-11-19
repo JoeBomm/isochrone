@@ -1,0 +1,51 @@
+{
+  "name": "isochrone-center-point-rwsdk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "miniflare --config miniflare.toml",
+    "build": "vite build",
+    "build:watch": "vite build --watch",
+    "preview": "wrangler pages dev dist",
+    "deploy": "wrangler pages deploy dist",
+    "deploy:worker": "wrangler deploy",
+    "deploy:dev": "./scripts/deploy.sh development",
+    "deploy:staging": "./scripts/deploy.sh staging",
+    "deploy:prod": "./scripts/deploy.sh production",
+    "test": "vitest",
+    "test:run": "vitest --run",
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write src/**/*.{ts,tsx}",
+    "clean": "rm -rf dist",
+    "setup:local": "./scripts/configure-environment.sh local",
+    "setup:cloudflare": "./scripts/setup-cloudflare.sh --all",
+    "setup:env": "./scripts/configure-environment.sh all",
+    "configure:secrets": "./scripts/configure-environment.sh secrets",
+    "verify:env": "./scripts/configure-environment.sh verify"
+  },
+  "dependencies": {
+    "@redwoodjs/sdk": "^1.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@turf/centroid": "^7.3.2",
+    "@turf/union": "^7.3.2",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "@types/leaflet": "^1.9.21",
+    "miniflare": "^3.20241218.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "wrangler": "^3.85.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

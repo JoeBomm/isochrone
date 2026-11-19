@@ -1,0 +1,18 @@
+// Default algorithm parameters
+export const DEFAULT_TOP_M = 5
+export const DEFAULT_GRID_SIZE = 5
+export const DEFAULT_DEDUPLICATION_THRESHOLD = 5000.0 // meters
+
+// Validation limits
+export const VALIDATION_LIMITS = {
+  MIN_DEDUPLICATION_THRESHOLD: 0,
+  MAX_DEDUPLICATION_THRESHOLD: 50000, // 50km
+  MIN_LOCATIONS: 2,
+  MAX_LOCATIONS: 12,
+  MIN_BUFFER_TIME: 5,
+  MAX_BUFFER_TIME: 60,
+  MIN_GRID_SIZE: 3,
+  MAX_GRID_SIZE: 10,
+  MIN_TOP_M: 1,
+  MAX_TOP_M: 20,
+}

@@ -1,0 +1,62 @@
+# Miniflare configuration for local development
+name = "isochrone-center-point-dev"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+# Main worker script
+main = "dist/worker.js"
+
+# Build configuration for development
+[build]
+command = "npm run build:watch"
+cwd = "."
+watch_dir = ["src", "worker.ts"]
+
+# D1 Database configuration for local development
+[[d1_databases]]
+binding = "DB"
+database_name = "isochrone_db"
+database_id = "local-db"
+migrations_dir = "./migrations"
+
+# Environment variables for development
+[vars]
+NODE_ENV = "development"
+APP_VERSION = "1.0.0-dev"
+API_BASE_URL = "http://localhost:8787"
+
+# KV namespaces for local caching
+[[kv_namespaces]]
+binding = "CACHE"
+id = "local-cache"
+
+# R2 buckets for local file storage
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "local-assets"
+
+# Analytics Engine for local development
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "local_analytics"
+
+# Local development server settings
+[miniflare]
+port = 8787
+host = "localhost"
+live_reload = true
+# upstream = "http://localhost:8788"  # Uncomment if using upstream service
+
+# Development-specific limits
+[limits]
+cpu_ms = 30000
+
+# Enable debug logging in development
+[observability]
+enabled = true
+
+# Worker configuration
+[worker]
+format = "modules"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]

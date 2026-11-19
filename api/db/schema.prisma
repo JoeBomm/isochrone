@@ -14,11 +14,57 @@ generator client {
   binaryTargets = "native"
 }
 
-// Define your own datamodels here and run `yarn redwood prisma migrate dev`
-// to create migrations for them and apply to your dev DB.
-// TODO: Please remove the following example:
-model UserExample {
-  id    Int     @id @default(autoincrement())
-  email String  @unique
-  name  String?
+// Core data models for isochrone application
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("locations")
+}
+
+model IsochroneCache {
+  id                String   @id @default(cuid())
+  pointId           String   @map("point_id")
+  travelTimeMinutes Int      @map("travel_time_minutes")
+  travelMode        String   @map("travel_mode")
+  geojson           String
+  createdAt         DateTime @default(now()) @map("created_at")
+  expiresAt         DateTime @map("expires_at")
+
+  @@index([pointId, travelTimeMinutes, travelMode])
+  @@index([expiresAt])
+  @@map("isochrone_cache")
+}
+
+model MatrixCache {
+  id               String   @id @default(cuid())
+  originsHash      String   @map("origins_hash")
+  destinationsHash String   @map("destinations_hash")
+  travelMode       String   @map("travel_mode")
+  matrixData       String   @map("matrix_data")
+  createdAt        DateTime @default(now()) @map("created_at")
+  expiresAt        DateTime @map("expires_at")
+
+  @@index([originsHash, destinationsHash, travelMode])
+  @@index([expiresAt])
+  @@map("matrix_cache")
+}
+
+model GeocodingCache {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([address])
+  @@index([expiresAt])
+  @@map("geocoding_cache")
 }
