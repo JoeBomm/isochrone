@@ -19,6 +19,21 @@ export const VALIDATION_LIMITS = {
   MAX_TOP_M: 50,
 } as const;
 
+// Participant count. The old service (api/src/services/isochrones.ts) capped
+// locations at 12. Independently, every request must fit the ORS hosted
+// matrix limit of 3,500 routes; parseFindInput also rejects
+// participant/gridSize combinations that exceed it (e.g. 8+ at gridSize 20).
+export const MIN_PARTICIPANTS = 2;
+export const MAX_PARTICIPANTS = 12;
+
+// Isochrone travel time in whole minutes. 60 matches the old service's upper
+// bound and the ORS hosted time-range cap of 1 hour; the old lower bound of 5
+// is relaxed to 1 (short walking isochrones are meaningful).
+export const ISOCHRONE_MINUTES = { MIN: 1, MAX: 60 } as const;
+
+// Geocode query length cap (after trimming / whitespace collapsing).
+export const GEOCODE_QUERY_MAX_LENGTH = 200;
+
 export const API_CONFIG = {
   MATRIX_TIMEOUT_MS: 45000,
   ISOCHRONE_TIMEOUT_MS: 30000,

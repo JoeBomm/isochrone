@@ -28,6 +28,25 @@
     { "binding": "CACHE", "id": "00000000000000000000000000000000" }
   ],
 
+  // Per-client rate limits (Workers Rate Limiting binding), keyed by
+  // CF-Connecting-IP; see src/server/rateLimit.ts. `namespace_id` is a
+  // user-chosen positive integer (as a string) that must be unique within the
+  // Cloudflare account; no resource has to be created. `period` must be 10
+  // or 60 and must match RATE_LIMIT_PERIOD_SECONDS. Limits are approximate
+  // and per Cloudflare location. Find (one ORS matrix call) is the most
+  // expensive action, so it gets the tightest limit; geocode is cheapest.
+  // The ORS key's own quota is shared by all clients and still applies
+  // (surfaced to users as the 'quota' error).
+  "ratelimits": [
+    { "name": "FIND_RATE_LIMITER", "namespace_id": "4601", "simple": { "limit": 10, "period": 60 } },
+    { "name": "ISOCHRONE_RATE_LIMITER", "namespace_id": "4602", "simple": { "limit": 10, "period": 60 } },
+    { "name": "GEOCODE_RATE_LIMITER", "namespace_id": "4603", "simple": { "limit": 30, "period": 60 } }
+  ],
+
+  // Optional non-secret var ORS_BASE_URL overrides the ORS endpoint (e2e
+  // mocks); unset = https://api.openrouteservice.org. Set it in .dev.vars for
+  // local runs rather than here, so production always uses the real endpoint.
+  //
   // Do NOT put ORS_API_KEY here. It is a Worker secret:
   //   npx wrangler secret put ORS_API_KEY   (local dev: .dev.vars)
   "vars": {}
