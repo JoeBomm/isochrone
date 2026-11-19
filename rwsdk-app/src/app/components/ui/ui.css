@@ -1,0 +1,306 @@
+/* UI primitives. Plain global CSS with a `ui-` prefix; loaded once from
+   styles/app.css (linked in the Document) so it works for server and client
+   components alike. */
+
+/* Button ----------------------------------------------------------------- */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 0 var(--space-5);
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-btn--primary {
+  background: var(--harbour);
+  color: var(--on-harbour);
+}
+
+.ui-btn--primary:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--harbour-strong);
+}
+
+.ui-btn--secondary {
+  background: var(--surface);
+  border-color: var(--harbour);
+  color: var(--harbour);
+}
+
+.ui-btn--secondary:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--harbour-tint);
+}
+
+.ui-btn--quiet {
+  background: transparent;
+  color: var(--harbour);
+  padding: 0 var(--space-3);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+.ui-btn--quiet:hover:not(:disabled, [aria-disabled="true"]) {
+  background: var(--harbour-tint);
+}
+
+/* Disabled controls are exempt from contrast rules, but keep them legible. */
+.ui-btn:disabled {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.ui-btn--quiet:disabled {
+  border-color: transparent;
+}
+
+.ui-btn[aria-disabled="true"] {
+  cursor: progress;
+}
+
+.ui-btn__label {
+  display: inline-block;
+}
+
+/* Field / Select ------------------------------------------------------------ */
+
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ui-field__label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.ui-field__hint {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.ui-field__error {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--danger);
+}
+
+.ui-field__error:empty {
+  margin-top: calc(var(--space-1) * -1); /* cancel the gap when empty */
+}
+
+.ui-control {
+  display: block;
+  width: 100%;
+  min-height: var(--control-height);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--edge);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-md); /* >= 16px stops iOS zoom-on-focus */
+}
+
+.ui-control::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.ui-control:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+
+.ui-control[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.ui-control:disabled {
+  border-color: var(--rule);
+  background: var(--paper);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.ui-select {
+  position: relative;
+  display: block;
+}
+
+.ui-select__control {
+  appearance: none;
+  padding-right: var(--space-10);
+  cursor: pointer;
+}
+
+/* Chevron drawn with borders (CSP blocks data: images). */
+.ui-select::after {
+  content: "";
+  position: absolute;
+  right: var(--space-4);
+  top: calc(50% + var(--space-1) / 2);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  transform: translateY(-75%) rotate(45deg);
+  pointer-events: none;
+}
+
+.ui-select:has(:disabled)::after {
+  border-color: var(--ink-muted);
+}
+
+/* Card -------------------------------------------------------------------- */
+
+.ui-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--rule);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.ui-card__title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+/* Alert ------------------------------------------------------------------- */
+
+.ui-alert {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  border: var(--border-width) solid;
+  color: var(--ink);
+}
+
+.ui-alert--info {
+  background: var(--harbour-tint);
+  border-color: var(--harbour);
+  --alert-accent: var(--harbour);
+  --alert-bg: var(--harbour-tint);
+}
+
+.ui-alert--error {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+  --alert-accent: var(--danger);
+  --alert-bg: var(--danger-tint);
+}
+
+.ui-alert__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.125rem;
+  color: var(--alert-accent);
+  flex: none;
+}
+
+.ui-alert__glyph {
+  stroke: var(--alert-bg);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.ui-alert__glyph-dot {
+  fill: var(--alert-bg);
+}
+
+.ui-alert__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.ui-alert__title {
+  font-weight: var(--weight-semibold);
+}
+
+.ui-alert--error .ui-alert__title {
+  color: var(--danger);
+}
+
+.ui-alert__action {
+  margin-top: var(--space-2);
+}
+
+/* Spinner ----------------------------------------------------------------- */
+
+.ui-spinner {
+  display: inline-flex;
+  flex: none;
+  color: currentColor;
+}
+
+.ui-spinner--sm {
+  width: 1rem;
+  height: 1rem;
+}
+
+.ui-spinner--md {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.ui-spinner--lg {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.ui-spinner__svg {
+  width: 100%;
+  height: 100%;
+  animation: ui-spin var(--motion-spin) linear infinite;
+}
+
+.ui-spinner__track,
+.ui-spinner__arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+}
+
+.ui-spinner__track {
+  opacity: 0.25;
+}
+
+.ui-spinner__arc {
+  stroke-linecap: round;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-spinner__svg {
+    animation: none;
+  }
+}

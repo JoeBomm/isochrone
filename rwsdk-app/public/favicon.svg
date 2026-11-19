@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -3 26 24">
+  <style>.l{fill:#13232e}@media (prefers-color-scheme: dark){.l{fill:#e6eef2}}</style>
+  <rect x="0" y="2" width="17" height="3" rx="1.5" fill="#0072b2"/>
+  <rect x="6" y="7.5" width="11" height="3" rx="1.5" fill="#d55e00"/>
+  <rect x="3" y="13" width="14" height="3" rx="1.5" fill="#009e73"/>
+  <rect class="l" x="19" y="0" width="2.5" height="18" rx="1.25"/>
+</svg>

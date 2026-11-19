@@ -23,9 +23,11 @@ export const setCommonHeaders =
       "geolocation=(), microphone=(), camera=()",
     );
 
-    // Defines trusted sources for content loading and script execution:
+    // Defines trusted sources for content loading and script execution.
+    // Fonts are self-hosted (@fontsource-variable, bundled to /assets), so the
+    // starter's Google Fonts hosts are removed from style-src and font-src.
     response.headers.set(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
+      `default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
     );
   };

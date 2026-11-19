@@ -1,0 +1,188 @@
+/* App shell: map region + controls panel (bottom sheet < 960px, side panel
+   >= 960px). Depends on tokens.css. */
+
+.shell {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Map: fills the screen behind the sheet on mobile. */
+.shell__map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* Sheet ------------------------------------------------------------------- */
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: var(--sheet-half);
+  background: var(--paper);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  box-shadow: var(--shadow-sheet);
+  transition: height var(--motion-sheet);
+}
+
+.sheet[data-snap="peek"] {
+  height: var(--sheet-peek);
+}
+
+.sheet[data-snap="full"] {
+  height: var(--sheet-full);
+}
+
+.sheet__handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  align-self: center;
+  width: 6rem;
+  height: var(--control-height);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  cursor: grab;
+  touch-action: none; /* we read vertical swipes ourselves */
+}
+
+.sheet__handle:focus-visible {
+  outline-offset: -2px; /* stays inside the rounded sheet edge */
+}
+
+.sheet__grip {
+  display: block;
+  width: 2.5rem;
+  height: 0.3125rem;
+  border-radius: 999px;
+  background: var(--edge);
+}
+
+.sheet__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--space-4) var(--space-6);
+}
+
+.shell__header {
+  padding: var(--space-1) 0 var(--space-4);
+}
+
+.shell__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* Wordmark ---------------------------------------------------------------- */
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+}
+
+.wordmark__mark {
+  width: 1.375rem;
+  height: 1.125rem;
+  flex: none;
+}
+
+.wordmark__bar--1 {
+  fill: var(--person-1);
+}
+
+.wordmark__bar--2 {
+  fill: var(--person-2);
+}
+
+.wordmark__bar--3 {
+  fill: var(--person-3);
+}
+
+.wordmark__line {
+  fill: var(--ink);
+}
+
+/* Map placeholder: plain chart-paper grid until Leaflet lands (Task 9). */
+
+.map-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  background-position: -1px -1px;
+}
+
+.map-placeholder__label {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+/* On mobile keep the label in the visible strip above the half sheet. */
+@media (max-width: 959.98px) {
+  .map-placeholder {
+    align-items: flex-start;
+    padding-top: 22dvh;
+  }
+}
+
+/* Desktop: side panel ----------------------------------------------------- */
+
+@media (min-width: 960px) {
+  .shell {
+    display: grid;
+    grid-template-columns: var(--panel-width) 1fr;
+  }
+
+  .shell__map {
+    position: relative;
+    inset: auto;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .sheet,
+  .sheet[data-snap] {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1;
+    height: 100dvh;
+    border-radius: 0;
+    box-shadow: none;
+    border-right: var(--border-width) solid var(--rule);
+    transition: none;
+  }
+
+  .sheet__handle {
+    display: none;
+  }
+
+  .sheet__body {
+    padding: var(--space-6);
+  }
+}

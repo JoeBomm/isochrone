@@ -1,0 +1,12 @@
+/*
+ * Single stylesheet entry, linked from the Document via `?url`.
+ * Global CSS (not CSS modules) so server components can use the classes too:
+ * rwsdk only auto-injects stylesheets imported by client components.
+ * Vite inlines these @imports and copies the font files to /assets, so the
+ * fonts are served from 'self' (CSP font-src 'self').
+ */
+@import "@fontsource-variable/schibsted-grotesk/wght.css";
+@import "./tokens.css";
+@import "./base.css";
+@import "../components/ui/ui.css";
+@import "../components/shell/shell.css";
