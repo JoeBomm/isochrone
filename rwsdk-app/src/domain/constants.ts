@@ -3,7 +3,6 @@
 // NOTE: the old GraphQL SDL defaults (topM=5, gridSize=5, threshold=5000)
 // disagreed with the constants below (3 / 7 / 2500). The constants are what
 // the old code actually used as defaults, so they are used here.
-// Cache TTLs are not in the old constants file; they belong to Task 4.
 
 export const TOP_M = 3;
 export const GRID_SIZE = 7;
@@ -25,3 +24,13 @@ export const API_CONFIG = {
   ISOCHRONE_TIMEOUT_MS: 30000,
   GEOCODING_TIMEOUT_MS: 10000,
 } as const;
+
+// KV cache TTLs in seconds, from the old api/src/lib/cache.ts defaults
+// (geocoding 7 days; matrix and isochrone 24 hours). KV's minimum
+// expirationTtl is 60s; cached() clamps to it.
+export const CACHE_TTL = {
+  GEOCODE_SECONDS: 7 * 24 * 60 * 60,
+  MATRIX_SECONDS: 24 * 60 * 60,
+  ISOCHRONE_SECONDS: 24 * 60 * 60,
+} as const;
+export const KV_MIN_TTL_SECONDS = 60;
