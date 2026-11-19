@@ -1,7 +1,7 @@
 {
   "name": "meeting-point-finder",
   "version": "1.0.0",
-  "description": "A bare-bones RedwoodSDK starter",
+  "description": "Meeting-point finder on RedwoodSDK",
   "main": "index.js",
   "type": "module",
   "keywords": [],
