@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -75,9 +76,11 @@ export interface AddressFieldProps {
  * - DOM focus stays on the input; the highlighted option is conveyed with
  *   aria-activedescendant and aria-selected.
  * - ArrowDown/ArrowUp open the list and move through options (wrapping);
- *   Enter selects the highlighted option; Escape closes the list (it does not
- *   clear the text: the APG makes that optional); Tab closes the list and
- *   keeps the typed text (nothing is selected).
+ *   Enter selects the highlighted option; Escape closes the list and cancels
+ *   any pending or in-flight search (it does not clear the text: the APG
+ *   makes that optional); Tab/blur also cancel the search, close the list and
+ *   keep the typed text (nothing is selected). A search that completes while
+ *   the input is not focused stores its results but never opens the list.
  *
  * Search: debounced (SEARCH_DEBOUNCE_MS) after typing at least
  * MIN_QUERY_LENGTH characters. A new keystroke cancels the pending timer;
@@ -111,6 +114,17 @@ export function AddressField({
   latestValue.current = value;
   const cache = useRef(new Map<string, ResolvedPlace[]>());
   const searchRef = useRef<(query: string) => void>(() => {});
+  const ownInput = useRef<HTMLInputElement | null>(null);
+  const setInput = useCallback(
+    (el: HTMLInputElement | null) => {
+      ownInput.current = el;
+      if (typeof inputRef === "function") inputRef(el);
+      else if (inputRef) inputRef.current = el;
+    },
+    [inputRef],
+  );
+  const hasFocus = () =>
+    ownInput.current !== null && ownInput.current.ownerDocument.activeElement === ownInput.current;
 
   const cancelPending = () => {
     if (timer.current !== null) {
@@ -126,10 +140,15 @@ export function AddressField({
     setActive(-1);
   };
 
+  /**
+   * Store results; open the list only if the input still has focus, so a
+   * search that finishes after the user moved on never pops a list open under
+   * another field. ArrowDown on return opens the stored results.
+   */
   const showResults = (results: ResolvedPlace[]) => {
     setSuggestions(results);
     setActive(-1);
-    setOpen(results.length > 0);
+    setOpen(results.length > 0 && hasFocus());
   };
 
   const search = async (query: string) => {
@@ -270,15 +289,17 @@ export function AddressField({
           else closeList();
         }
         return;
-      case "Escape":
-        if (open || timer.current !== null) {
-          event.preventDefault();
-          cancelPending();
-          closeList();
-        }
-        return;
-      case "Tab":
+      case "Escape": {
+        // Always cancel a pending or in-flight search, so a late response
+        // cannot reopen the list the user just dismissed.
+        const busy = open || timer.current !== null || searching;
+        cancelPending();
         closeList();
+        if (busy) event.preventDefault();
+        return;
+      }
+      case "Tab":
+        // blur (below) cancels the search and closes the list
         return;
       default:
         return;
@@ -304,7 +325,7 @@ export function AddressField({
     <FieldFrame ids={ids} label={label} error={message} className="address">
       <div className="address__control">
         <input
-          ref={inputRef}
+          ref={setInput}
           id={ids.controlId}
           type="text"
           role="combobox"
@@ -312,7 +333,10 @@ export function AddressField({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onBlur={closeList}
+          onBlur={() => {
+            cancelPending();
+            closeList();
+          }}
           placeholder="Street, town or postcode"
           autoComplete="off"
           spellCheck={false}

@@ -140,6 +140,71 @@ describe("AddressField: combobox semantics", () => {
   });
 });
 
+describe("AddressField: no suggestions for a field that lost focus", () => {
+  it("Tab within the debounce cancels the pending search; the list never opens", async () => {
+    geocode.mockResolvedValue(results("Cambridge, England"));
+    const { user, input } = setup();
+    await user.click(input);
+    await user.type(input, "Cambridge");
+    await advance(100);
+    await user.tab();
+    await advance(1000);
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(geocode).not.toHaveBeenCalled();
+  });
+
+  it("Escape while a request is in flight: the late response does not open the list", async () => {
+    const pending = deferred<GeocodeReturn>();
+    geocode.mockReturnValueOnce(pending.promise);
+    const { user, input } = setup();
+    await user.click(input);
+    await user.type(input, "Cambridge");
+    await advance(300);
+    expect(geocode).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Escape}");
+    await act(async () => pending.resolve(results("Cambridge, England")));
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("blur while a request is in flight: the late response does not open the list", async () => {
+    const pending = deferred<GeocodeReturn>();
+    geocode.mockReturnValueOnce(pending.promise);
+    const { user, input } = setup();
+    await user.click(input);
+    await user.type(input, "Cambridge");
+    await advance(300);
+    await user.tab();
+    await act(async () => pending.resolve(results("Cambridge, England")));
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("a search that finishes while the field is unfocused fills the list but leaves it closed", async () => {
+    geocode.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "rate_limited", message: "Too many requests.", retryAfterSeconds: 1 },
+    });
+    geocode.mockResolvedValueOnce(results("Cambridge, England"));
+    const { user, input } = setup();
+    await user.click(input);
+    await user.type(input, "Cambridge");
+    await advance(300);
+    await user.tab(); // focus moves on during the countdown
+    await advance(1000); // countdown ends -> retry runs
+    expect(geocode).toHaveBeenCalledTimes(2);
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    // Coming back and pressing ArrowDown shows the results without a new request.
+    await user.click(input);
+    await user.keyboard("{ArrowDown}");
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Cambridge, England"]);
+    expect(geocode).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("AddressField: keyboard", () => {
   it("type -> ArrowDown -> Enter selects the suggestion and keeps focus in the input", async () => {
     geocode.mockResolvedValue(results("High Street, Oxford", "High Street, Bath"));
