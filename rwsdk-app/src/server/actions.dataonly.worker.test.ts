@@ -52,7 +52,9 @@ describe("server functions are data-only POST queries", () => {
     // The ActionResult envelope is returned as data, not thrown.
     expect(body).toContain('"ok":false');
     expect(body).toContain('"code":"upstream"');
-    // No page tree in the payload (the shell renders the "Halfway" wordmark).
+    // No page tree in the payload. "/" renders the client HomePage, so a page
+    // render shows up as its client reference ("HomePage.tsx#HomePage").
+    expect(body).not.toContain("HomePage");
     expect(body).not.toContain("Halfway");
     expect(body).not.toContain("app-title");
   });
@@ -63,7 +65,7 @@ describe("server functions are data-only POST queries", () => {
     err.mockRestore();
     const body = await res.text();
     expect(body).toContain('"code":"upstream"');
-    expect(body).toContain("Halfway");
+    expect(body).toContain("HomePage.tsx#HomePage");
   });
 
   // rwsdk turns a Response returned by its action handler into

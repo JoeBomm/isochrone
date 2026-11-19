@@ -52,6 +52,13 @@ export interface BottomSheetProps {
   /** Controlled snap (e.g. selecting a result snaps to "peek"). */
   snap?: SheetSnap;
   onSnapChange?: (snap: SheetSnap) => void;
+  /**
+   * Shown instead of the body while the mobile sheet is at peek (shell.css):
+   * a short status plus the primary action, so the collapsed sheet is still
+   * useful. Not shown on desktop, where the body is always visible. At peek
+   * the body is hidden (display: none), which matches aria-expanded=false.
+   */
+  summary?: ReactNode;
 }
 
 /**
@@ -78,6 +85,7 @@ export function BottomSheet({
   defaultSnap = "half",
   snap: controlledSnap,
   onSnapChange,
+  summary,
 }: BottomSheetProps) {
   const [uncontrolledSnap, setUncontrolledSnap] = useState<SheetSnap>(defaultSnap);
   const snap = controlledSnap ?? uncontrolledSnap;
@@ -143,7 +151,12 @@ export function BottomSheet({
   };
 
   return (
-    <section className="sheet" data-snap={snap} aria-labelledby={labelledBy}>
+    <section
+      className="sheet"
+      data-snap={snap}
+      data-summary={summary ? "" : undefined}
+      aria-labelledby={labelledBy}
+    >
       <button
         type="button"
         className="sheet__handle"
@@ -160,6 +173,7 @@ export function BottomSheet({
       >
         <span className="sheet__grip" aria-hidden="true" />
       </button>
+      {summary ? <div className="sheet__summary">{summary}</div> : null}
       <div className="sheet__body" id={bodyId}>
         {children}
       </div>

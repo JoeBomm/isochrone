@@ -29,6 +29,17 @@ export interface MeetingFormProps {
   onSubmit: (values: MeetingFormValues) => void;
   /** A search is running: the submit button shows a spinner and ignores clicks. */
   pending: boolean;
+  /** Submitting is not allowed right now (rate-limit countdown): submit is disabled. */
+  blocked?: boolean;
+  /** id for the <form>, so a button elsewhere (the sheet's peek summary) can submit it. */
+  formId?: string;
+  /** Reports whether enough people are resolved to submit. */
+  onCanSubmitChange?: (canSubmit: boolean) => void;
+  /**
+   * Called when a submit is refused because a field was never resolved, just
+   * before focus moves to that field (the page can reveal the form first).
+   */
+  onInvalid?: () => void;
 }
 
 /**
@@ -42,7 +53,14 @@ export interface MeetingFormProps {
  * The actions bar is sticky at the bottom of the scrolling panel, so the
  * primary button stays visible at the mobile sheet's peek height.
  */
-export function MeetingForm({ onSubmit, pending }: MeetingFormProps) {
+export function MeetingForm({
+  onSubmit,
+  pending,
+  blocked = false,
+  formId,
+  onCanSubmitChange,
+  onInvalid,
+}: MeetingFormProps) {
   const [rows, setRows] = useState<ParticipantDraft[]>(initialDrafts);
   const [mode, setMode] = useState<TravelMode>("driving-car");
   const [goal, setGoal] = useState<OptimizationGoal>("MINIMAX");
@@ -79,6 +97,12 @@ export function MeetingForm({ onSubmit, pending }: MeetingFormProps) {
 
   const resolvedCount = resolvedRows(rows).length;
   const canSubmit = resolvedCount >= MIN_PARTICIPANTS;
+
+  const reportCanSubmit = useRef(onCanSubmitChange);
+  reportCanSubmit.current = onCanSubmitChange;
+  useEffect(() => {
+    reportCanSubmit.current?.(canSubmit);
+  }, [canSubmit]);
 
   const update = (id: string, change: Partial<ParticipantDraft>) =>
     setRows((current) => current.map((r) => (r.id === id ? { ...r, ...change } : r)));
@@ -124,10 +148,11 @@ export function MeetingForm({ onSubmit, pending }: MeetingFormProps) {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending || !canSubmit) return;
+    if (pending || blocked || !canSubmit) return;
     const unresolved = unresolvedRows(rows);
     if (unresolved.length > 0) {
       setErrors(Object.fromEntries(unresolved.map((r) => [r.id, UNRESOLVED_MESSAGE])));
+      onInvalid?.();
       addressInputs.current.get(unresolved[0].id)?.focus();
       return;
     }
@@ -149,7 +174,7 @@ export function MeetingForm({ onSubmit, pending }: MeetingFormProps) {
   };
 
   return (
-    <form className="meeting-form" onSubmit={handleSubmit} noValidate>
+    <form id={formId} className="meeting-form" onSubmit={handleSubmit} noValidate>
       <section className="meeting-form__section" aria-labelledby={peopleHeadingId}>
         <h2 id={peopleHeadingId}>People</h2>
         <p className="muted">Add where everyone is starting from. You need at least two people.</p>
@@ -185,7 +210,7 @@ export function MeetingForm({ onSubmit, pending }: MeetingFormProps) {
         <Button
           type="submit"
           className="meeting-form__submit"
-          disabled={!canSubmit}
+          disabled={!canSubmit || blocked}
           loading={pending}
           loadingLabel="Finding meeting points"
           aria-describedby={canSubmit ? undefined : submitHintId}

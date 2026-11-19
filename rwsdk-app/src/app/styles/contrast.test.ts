@@ -55,6 +55,30 @@ const BADGE_RING_PAIRS: Array<[fg: string, bg: string]> = [
 TEXT_PAIRS.push(...BADGE_TEXT_PAIRS);
 UI_PAIRS.push(...BADGE_RING_PAIRS);
 
+// Results and map (Task 9; results.css).
+// Fairness strip: each bar is a --surface track with an --edge outline, on a
+// --paper row (or --harbour-tint when selected). The person-coloured fill
+// ends in a 2px --person-ring tick, so where the bar stops is visible at
+// >= 3:1 against the track even for light colours (#56B4E9 is 2.3:1 on
+// white). The minutes are always printed as text next to the bar.
+// Rank markers (list and map): --ink disc with --paper digits; selected:
+// --harbour disc with --on-harbour digits and a --harbour ring on --surface.
+TEXT_PAIRS.push(
+  ["paper", "ink"], // rank number on the ink disc
+  ["ink", "harbour-tint"], // selected row text
+  ["ink-muted", "harbour-tint"], // selected row secondary text
+  ["danger", "harbour-tint"], // isochrone error text on the selected row
+);
+UI_PAIRS.push(
+  ["edge", "paper"], // strip track outline on a row
+  ["edge", "harbour-tint"], // strip track outline on the selected row
+  ["person-ring", "surface"], // end tick of every bar, against the track
+  ["ink", "paper"], // rank disc on the panel
+  ["harbour", "harbour-tint"], // selected row left bar
+  ["harbour", "surface"], // selected map marker ring (on a --surface halo)
+  ["ink", "surface"], // map rank disc against its --surface halo
+);
+
 const schemes = parseSchemes(tokensCss);
 
 describe.each(["light", "dark"] as const)("%s scheme contrast", (name) => {

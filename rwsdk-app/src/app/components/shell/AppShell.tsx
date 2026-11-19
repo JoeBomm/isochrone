@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BottomSheet } from "./BottomSheet";
+import { BottomSheet, type SheetSnap } from "./BottomSheet";
 
 export const APP_NAME = "Halfway"; // placeholder name (ux-direction.md)
 
@@ -8,6 +8,11 @@ export interface AppShellProps {
   children: ReactNode;
   /** Map region content. Defaults to a placeholder until Leaflet (Task 9). */
   map?: ReactNode;
+  /** Controlled sheet snap (mobile); see BottomSheet. */
+  snap?: SheetSnap;
+  onSnapChange?: (snap: SheetSnap) => void;
+  /** Peek-state summary for the mobile sheet; see BottomSheet. */
+  summary?: ReactNode;
 }
 
 /**
@@ -17,10 +22,10 @@ export interface AppShellProps {
  * The panel comes first in the DOM so keyboard and screen reader users reach
  * the controls before the (supplementary) map.
  */
-export function AppShell({ children, map }: AppShellProps) {
+export function AppShell({ children, map, snap, onSnapChange, summary }: AppShellProps) {
   return (
     <main className="shell">
-      <BottomSheet labelledBy="app-title">
+      <BottomSheet labelledBy="app-title" snap={snap} onSnapChange={onSnapChange} summary={summary}>
         <header className="shell__header">
           <Wordmark />
         </header>

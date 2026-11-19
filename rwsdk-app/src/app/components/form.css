@@ -285,3 +285,15 @@
     padding: var(--actions-pad) var(--space-6) calc(var(--actions-pad) + var(--space-6));
   }
 }
+
+/* While an address suggestion list is open, the actions bar stops being
+   sticky (and drops its hint line), so it never covers the suggestions at
+   the sheet's half height. It stays in the same place in the flow. */
+.meeting-form:has(.address__list:not([hidden])) .meeting-form__actions {
+  position: static;
+}
+
+.meeting-form:has(.address__list:not([hidden])) .meeting-form__hint {
+  display: none;
+}
+

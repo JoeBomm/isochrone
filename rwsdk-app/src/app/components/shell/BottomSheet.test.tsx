@@ -148,4 +148,27 @@ describe("BottomSheet", () => {
     );
     expect(region().getAttribute("data-snap")).toBe("peek");
   });
+
+  it("renders an optional peek summary outside the body and flags it for CSS", () => {
+    const { container, rerender } = renderSheet({ snap: "peek", summary: <button type="button">Find meeting points</button> });
+    const section = container.querySelector(".sheet")!;
+    expect(section.hasAttribute("data-summary")).toBe(true);
+    const summary = container.querySelector(".sheet__summary")!;
+    expect(summary.textContent).toBe("Find meeting points");
+    // the summary is not inside the collapsible body the handle controls
+    const body = document.getElementById(handle().getAttribute("aria-controls")!)!;
+    expect(body.contains(summary)).toBe(false);
+    expect(handle().nextElementSibling).toBe(summary);
+
+    rerender(
+      <>
+        <h1 id="title">Halfway</h1>
+        <BottomSheet labelledBy="title">
+          <p>Panel content</p>
+        </BottomSheet>
+      </>,
+    );
+    expect(container.querySelector(".sheet")!.hasAttribute("data-summary")).toBe(false);
+    expect(container.querySelector(".sheet__summary")).toBeNull();
+  });
 });

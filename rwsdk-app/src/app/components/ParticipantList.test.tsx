@@ -257,6 +257,45 @@ describe("MeetingForm: trip options", () => {
   });
 });
 
+describe("MeetingForm: page integration", () => {
+  it("takes a form id and reports whether it can submit", async () => {
+    const onCanSubmitChange = vi.fn();
+    const { user, container } = setup({ formId: "meeting-form", onCanSubmitChange });
+    expect(container.querySelector("form")!.id).toBe("meeting-form");
+    expect(onCanSubmitChange).toHaveBeenLastCalledWith(false);
+    await resolveRow(user, 0, "Carrow Road");
+    await resolveRow(user, 1, "Mill Lane");
+    expect(onCanSubmitChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("blocked (rate-limit countdown) disables submit and ignores a submit from outside", async () => {
+    const { user, onSubmit, rerender, container } = setup();
+    await resolveRow(user, 0, "Carrow Road");
+    await resolveRow(user, 1, "Mill Lane");
+    rerender(<MeetingForm onSubmit={onSubmit} pending={false} blocked />);
+    expect((submitButton() as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      container.querySelector("form")!.requestSubmit();
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("calls onInvalid before moving focus to an unresolved field", async () => {
+    const order: string[] = [];
+    const onInvalid = vi.fn(() => order.push(`invalid, focus on ${document.activeElement?.tagName}`));
+    const { user } = setup({ onInvalid });
+    await user.click(screen.getByRole("button", { name: "Add person" }));
+    await resolveRow(user, 0, "Carrow Road");
+    await resolveRow(user, 1, "Mill Lane");
+    await user.type(addressInputs()[2], "Somewhere");
+    await user.keyboard("{Escape}");
+    await user.click(submitButton());
+    expect(onInvalid).toHaveBeenCalledTimes(1);
+    expect(order[0]).toBe("invalid, focus on BUTTON");
+    expect(document.activeElement).toBe(addressInputs()[2]);
+  });
+});
+
 describe("MeetingForm: keyboard", () => {
   it("follows a logical tab order through the whole form", async () => {
     const { user } = setup();

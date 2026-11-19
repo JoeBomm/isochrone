@@ -94,7 +94,7 @@
 
   /* Layout */
   --panel-width: 400px;
-  --sheet-peek: 8.5rem;
+  --sheet-peek: 9.5rem; /* handle + peek summary (status + primary action) */
   --sheet-half: 50dvh;
   --sheet-full: calc(100dvh - 2.5rem);
 

@@ -6,8 +6,12 @@
  * fonts are served from 'self' (CSP font-src 'self').
  */
 @import "@fontsource-variable/schibsted-grotesk/wght.css";
+/* Leaflet's own CSS, bundled (served from 'self', no CDN). Its marker PNGs
+   are never used: markers are HTML (L.divIcon). */
+@import "leaflet/dist/leaflet.css";
 @import "./tokens.css";
 @import "./base.css";
 @import "../components/ui/ui.css";
 @import "../components/shell/shell.css";
 @import "../components/form.css";
+@import "../components/results.css";

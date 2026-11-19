@@ -1,0 +1,475 @@
+/* Results, fairness strip, peek summary and map (Task 9). Depends on
+   tokens.css and ui.css. Colour pairs are checked in contrast.test.ts. */
+
+/* Results panel -------------------------------------------------------------- */
+
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.results-panel > h2 {
+  scroll-margin-top: var(--space-4);
+}
+
+.results-panel__intro {
+  font-size: var(--text-sm);
+}
+
+.results-panel__debug {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.countdown {
+  display: block;
+}
+
+/* Rows separated by rules, not cards. */
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.result {
+  position: relative;
+  padding: var(--space-4) var(--space-3);
+  border-top: var(--border-width) solid var(--rule);
+}
+
+.result:last-child {
+  border-bottom: var(--border-width) solid var(--rule);
+}
+
+.result[data-selected] {
+  background: var(--harbour-tint);
+  box-shadow: inset 4px 0 0 var(--harbour);
+}
+
+.result__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.result__rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.result[data-selected] .result__rank {
+  background: var(--harbour);
+  color: var(--on-harbour);
+}
+
+/* The toggle button's hit area covers the whole row; its focus ring is drawn
+   on the row so it surrounds everything the button selects. */
+.result__select {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: var(--control-height);
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.result__select::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.result__select:focus-visible {
+  outline: none;
+}
+
+.result:has(.result__select:focus-visible) {
+  outline: var(--focus-width) solid var(--harbour);
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+.result:not([data-selected], .result--skeleton):hover {
+  background: var(--surface);
+}
+
+.result__title {
+  font-weight: var(--weight-semibold);
+}
+
+.result__meta {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.result__spinner {
+  display: inline-flex;
+  color: var(--harbour);
+}
+
+.result__note {
+  margin-top: var(--space-3);
+  padding-left: calc(1.75rem + var(--space-3));
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+/* Above the stretched button, so Try again is clickable. */
+.result__error {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  padding-left: calc(1.75rem + var(--space-3));
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.result__retry {
+  min-height: 2.25rem;
+}
+
+/* Fairness strip ---------------------------------------------------------------
+   One bar per person, all on one time scale (across every result). The track
+   is a --surface bar with an --edge outline; the fill ends in a --person-ring
+   tick so the end of the bar is visible at >= 3:1 whatever the colour. */
+
+.strip {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding: 0 0 0 calc(1.75rem + var(--space-3));
+  list-style: none;
+}
+
+.strip__row {
+  display: grid;
+  grid-template-columns: minmax(0, 4.5rem) minmax(0, 1fr) 3.75rem;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+}
+
+.strip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strip__track {
+  display: block;
+  height: 0.75rem;
+  overflow: hidden;
+  border: var(--border-width) solid var(--edge);
+  border-radius: 3px;
+  background: var(--surface);
+}
+
+.strip__fill {
+  display: block;
+  height: 100%;
+  border-right: 2px solid var(--person-ring);
+}
+
+.strip__value {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The longest trip (what "Fairest for everyone" minimises) is bold. */
+.strip__row--longest .strip__name,
+.strip__row--longest .strip__value {
+  font-weight: var(--weight-bold);
+}
+
+/* Loading skeleton: the same shapes, no motion (the direction has no load
+   animation). */
+.result--skeleton .result__rank,
+.skeleton-line {
+  display: block;
+  background: var(--rule);
+}
+
+.skeleton-line {
+  height: 0.75rem;
+  border-radius: 4px;
+}
+
+.skeleton-line--name {
+  width: 70%;
+}
+
+.skeleton-line--value {
+  width: 2.5rem;
+  margin-left: auto;
+}
+
+.result--skeleton .strip__track {
+  border-color: var(--rule);
+}
+
+.result--skeleton .strip__fill {
+  background: var(--rule);
+  border-right: 0;
+}
+
+/* Peek summary (mobile sheet collapsed) --------------------------------------- */
+
+.sheet__summary {
+  display: none;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+@media (max-width: 959.98px) {
+  .sheet[data-snap="peek"] .sheet__summary {
+    display: block;
+  }
+
+  /* At peek the summary replaces the body (the handle reports collapsed). */
+  .sheet[data-snap="peek"][data-summary] .sheet__body {
+    display: none;
+  }
+}
+
+.peek {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.peek__text {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.peek__text > span:last-child {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.peek__text .ui-spinner {
+  flex: none;
+  margin-top: 0.1em;
+  color: var(--harbour);
+}
+
+.peek__action {
+  width: 100%;
+}
+
+/* Map ---------------------------------------------------------------------- */
+
+.meeting-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  /* Neutral chart-paper until Leaflet has loaded (and if it cannot). */
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+}
+
+.meeting-map__canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.meeting-map__canvas.leaflet-container {
+  background: var(--paper);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.meeting-map__error {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  right: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+/* Leaflet controls in the app's colours (both schemes). */
+.meeting-map .leaflet-bar {
+  border: var(--border-width) solid var(--edge);
+  box-shadow: none;
+}
+
+.meeting-map .leaflet-bar a {
+  width: 2.25rem;
+  height: 2.25rem;
+  line-height: 2.25rem;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom-color: var(--rule);
+}
+
+.meeting-map .leaflet-bar a:hover {
+  background: var(--harbour-tint);
+}
+
+.meeting-map .leaflet-bar a.leaflet-disabled {
+  color: var(--ink-muted);
+  background: var(--paper);
+}
+
+.meeting-map .leaflet-control-attribution {
+  background: var(--surface);
+  color: var(--ink-muted);
+  padding: 0 var(--space-1);
+}
+
+.meeting-map .leaflet-control-attribution a {
+  color: var(--harbour);
+}
+
+/* Leaflet hides the outline on mouse focus only; keep the app's ring. */
+.meeting-map :focus-visible {
+  outline: var(--focus-width) solid var(--harbour);
+  outline-offset: var(--focus-offset);
+}
+
+.meeting-map__canvas.leaflet-container:focus-visible {
+  outline-offset: calc(var(--focus-width) * -1);
+}
+
+/* Start points: colour + initial, ink ring, surface halo (tiles vary). */
+.map-person {
+  background: none;
+  border: 0;
+}
+
+.map-person__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--person-ring);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--surface);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
+.map-person__badge--square {
+  border-radius: 6px;
+}
+
+/* Meeting points: ink disc with the rank; selected = harbour with a ring. */
+.map-result {
+  background: none;
+  border: 0;
+  border-radius: 999px;
+}
+
+.map-result__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 0 0 2px var(--surface);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.map-result.is-selected .map-result__dot {
+  background: var(--harbour);
+  color: var(--on-harbour);
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 6px var(--harbour);
+}
+
+.meeting-map .map-result:focus-visible {
+  outline-offset: 5px;
+}
+
+.meeting-map .map-result.is-selected:focus-visible {
+  outline-offset: 8px;
+}
+
+/* Isochrone: harbour, low-opacity fill, solid outline (CSS overrides the SVG
+   attributes Leaflet writes). */
+.map-isochrone {
+  stroke: var(--harbour);
+  stroke-width: 2.5px;
+  fill: var(--harbour);
+  fill-opacity: 0.16;
+  animation: map-isochrone-in 320ms ease-out;
+}
+
+@keyframes map-isochrone-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Debug candidates (?debug=1): small, quiet, never interactive. */
+.map-debug {
+  stroke: var(--ink-muted);
+  fill: var(--ink-muted);
+  pointer-events: none;
+}
+
+.map-debug--grid {
+  fill-opacity: 0;
+  stroke-opacity: 0.7;
+}
+
+/* Dark scheme: darken the (light) raster tiles so the map does not glare
+   next to the dark panel. Markers and controls are not filtered. */
+@media (prefers-color-scheme: dark) {
+  .meeting-map .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.85) saturate(0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-isochrone {
+    animation: none;
+  }
+}

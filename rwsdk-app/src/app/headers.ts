@@ -1,5 +1,8 @@
 import { RouteMiddleware } from "rwsdk/router";
 
+/** The only third-party image host: OpenStreetMap standard tiles (see MeetingMap.tsx). */
+export const TILE_ORIGIN = "https://tile.openstreetmap.org";
+
 export const setCommonHeaders =
   (): RouteMiddleware =>
   ({ response, rw: { nonce } }) => {
@@ -26,8 +29,11 @@ export const setCommonHeaders =
     // Defines trusted sources for content loading and script execution.
     // Fonts are self-hosted (@fontsource-variable, bundled to /assets), so the
     // starter's Google Fonts hosts are removed from style-src and font-src.
+    // img-src adds exactly one host: the OpenStreetMap tile server used by
+    // MeetingMap (TILE_URL). Leaflet's CSS is bundled and markers are HTML
+    // (divIcon), so no other image source is needed.
     response.headers.set(
       "Content-Security-Policy",
-      `default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
+      `default-src 'self'; script-src 'self' 'unsafe-eval' 'nonce-${nonce}' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' ${TILE_ORIGIN}; frame-ancestors 'self'; frame-src 'self' https://challenges.cloudflare.com; object-src 'none';`,
     );
   };

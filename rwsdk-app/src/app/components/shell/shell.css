@@ -5,6 +5,9 @@
   position: relative;
   height: 100dvh;
   overflow: hidden;
+  /* clip, not just hidden: an overflow:hidden box can still be scrolled by
+     scrollIntoView/focus, which shifted the whole layout (map included). */
+  overflow: clip;
 }
 
 /* Map: fills the screen behind the sheet on mobile. */
@@ -69,6 +72,10 @@
 }
 
 .sheet__body {
+  /* Containing block for absolutely positioned descendants (visually-hidden
+     text), so they are clipped by this scroller instead of overflowing the
+     shell. */
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
