@@ -1,0 +1,34 @@
+{
+  // Schema reference for wrangler configuration
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Name of your worker
+  "name": "meeting-point-finder",
+
+  // Entry point for your worker
+  "main": "src/worker.tsx",
+
+  // Compatibility settings
+  "compatibility_date": "2025-08-21",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Assets configuration
+  "assets": {
+    "binding": "ASSETS"
+  },
+
+  // Observability settings
+  "observability": {
+    "enabled": true
+  },
+
+  // KV read-through cache. PLACEHOLDER id: replace with the real namespace id
+  // (npx wrangler kv namespace create CACHE) before deploying.
+  "kv_namespaces": [
+    { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+  ],
+
+  // Do NOT put ORS_API_KEY here. It is a Worker secret:
+  //   npx wrangler secret put ORS_API_KEY   (local dev: .dev.vars)
+  "vars": {}
+}
