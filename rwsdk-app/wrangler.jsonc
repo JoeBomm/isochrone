@@ -82,6 +82,8 @@
   // (staging and production currently share one ORS key and its free-tier quota).
   "env": {
     "staging": {
+      // Custom domain, already attached in the dashboard; declared here so the repo records it.
+      "routes": [{ "pattern": "staging.wheretomeet.us", "custom_domain": true }],
       "kv_namespaces": [
         { "binding": "CACHE", "id": "3da19f53a179406097177dc9c4a6ee7b" }
       ],
@@ -93,6 +95,7 @@
       "vars": {}
     },
     "production": {
+      "routes": [{ "pattern": "wheretomeet.us", "custom_domain": true }],
       "kv_namespaces": [
         { "binding": "CACHE", "id": "b48e19dd8252485f9292960220251c4e" }
       ],
