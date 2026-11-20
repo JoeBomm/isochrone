@@ -10,6 +10,7 @@ import {
   DESKTOP_MIN_WIDTH,
   formatMinutes,
   geometryCoordinates,
+  medianFitBounds,
   type IsochroneGeometry,
   type ScoredCandidate,
 } from "./results";
@@ -164,9 +165,9 @@ export function MeetingMap(props: MeetingMapProps) {
     maxZoom: FIT_MAX_ZOOM,
   });
 
-  const fit = (coords: readonly Coordinate[]) => {
+  const fit = (coords: readonly Coordinate[], centreOnMedian = false) => {
     if (!api) return;
-    const b = boundsOf(coords);
+    const b = centreOnMedian ? medianFitBounds(coords) : boundsOf(coords);
     if (!b) return;
     const reduced = prefersReducedMotion();
     if (reduced) api.map.fitBounds(b, { ...padding(), animate: false });
@@ -247,10 +248,13 @@ export function MeetingMap(props: MeetingMapProps) {
     }
   }, [api, results, selectedId]);
 
-  // Fit everyone and every result when a new set arrives (or start points alone while loading).
+  // Fit everyone and every result when a new set arrives. With no results yet,
+  // centre on the median of the start points: the first one is flown to, later
+  // ones zoom out to include everyone without being biased by a close cluster.
   useEffect(() => {
     if (!api) return;
-    fit([...participants, ...results.map((r) => r.coordinate)]);
+    if (results.length === 0) fit(participants, true);
+    else fit([...participants, ...results.map((r) => r.coordinate)]);
   }, [api, participants, results]);
 
   // Centre the selected point in the visible part of the map.

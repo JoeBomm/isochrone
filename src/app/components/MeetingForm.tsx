@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import type { OptimizationGoal, TravelMode } from "@/domain/types";
+import type { Coordinate, OptimizationGoal, TravelMode } from "@/domain/types";
 import { ParticipantList } from "./ParticipantList";
 import { TripOptions } from "./TripOptions";
 import { Button } from "./ui/Button";
@@ -17,10 +17,17 @@ import {
   unresolvedRows,
   type MeetingFormValues,
   type ParticipantDraft,
+  type PersonSummary,
   type ResolvedPlace,
 } from "./participants";
 
 export type { FindInput, MeetingFormValues, PersonSummary } from "./participants";
+
+/** A resolved row: where it is plus its display data. */
+export interface ResolvedPerson {
+  coordinate: Coordinate;
+  person: PersonSummary;
+}
 
 export const UNRESOLVED_MESSAGE = "Choose an address from the suggestions, or clear this field.";
 
@@ -35,6 +42,11 @@ export interface MeetingFormProps {
   formId?: string;
   /** Reports whether enough people are resolved to submit. */
   onCanSubmitChange?: (canSubmit: boolean) => void;
+  /**
+   * Reports the resolved people (in order) whenever they change, so the map
+   * can show and frame them before anything is submitted.
+   */
+  onPlacesChange?: (people: ResolvedPerson[]) => void;
   /**
    * Called when a submit is refused because a field was never resolved, just
    * before focus moves to that field (the page can reveal the form first).
@@ -59,6 +71,7 @@ export function MeetingForm({
   blocked = false,
   formId,
   onCanSubmitChange,
+  onPlacesChange,
   onInvalid,
 }: MeetingFormProps) {
   const [rows, setRows] = useState<ParticipantDraft[]>(initialDrafts);
@@ -103,6 +116,17 @@ export function MeetingForm({
   useEffect(() => {
     reportCanSubmit.current?.(canSubmit);
   }, [canSubmit]);
+
+  const reportPlaces = useRef(onPlacesChange);
+  reportPlaces.current = onPlacesChange;
+  const resolvedPeople: ResolvedPerson[] = resolvedRows(rows).map((r) => ({
+    coordinate: r.place!.coordinate,
+    person: { slot: r.slot, name: displayName(r), initial: initialFor(r), label: r.place!.label },
+  }));
+  const placesKey = JSON.stringify(resolvedPeople);
+  useEffect(() => {
+    reportPlaces.current?.(resolvedPeople);
+  }, [placesKey]);
 
   const update = (id: string, change: Partial<ParticipantDraft>) =>
     setRows((current) => current.map((r) => (r.id === id ? { ...r, ...change } : r)));

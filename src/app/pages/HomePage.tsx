@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { MeetingForm, type MeetingFormValues } from "@/app/components/MeetingForm";
+import { MeetingForm, type MeetingFormValues, type PersonSummary, type ResolvedPerson } from "@/app/components/MeetingForm";
 import { MeetingMap } from "@/app/components/MeetingMap";
 import { GOALS } from "@/app/components/participants";
 import { PeekSummary, ResultsPanel } from "@/app/components/ResultsPanel";
@@ -80,6 +80,10 @@ export interface HomePageProps {
 export function HomePage({ debug }: HomePageProps) {
   const [search, setSearch] = useState<SearchState>({ status: "idle" });
   const [values, setValues] = useState<MeetingFormValues | null>(null);
+  // Resolved people in the form right now (shown on the map before any search).
+  const [placed, setPlaced] = useState<ResolvedPerson[]>([]);
+  const placedCoordinates = useMemo(() => placed.map((p) => p.coordinate), [placed]);
+  const placedPeople = useMemo<PersonSummary[]>(() => placed.map((p) => p.person), [placed]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [iso, setIso] = useState<IsoState>({ status: "idle" });
   const [retryIn, setRetryIn] = useState<number | null>(null);
@@ -256,8 +260,8 @@ export function HomePage({ debug }: HomePageProps) {
 
   const map = (
     <MeetingMap
-      participants={values?.input.participants ?? emptyList}
-      people={values?.people ?? emptyList}
+      participants={placedCoordinates}
+      people={placedPeople}
       results={points.length ? points : emptyList}
       selectedId={selectedId}
       onSelect={select}
@@ -304,6 +308,7 @@ export function HomePage({ debug }: HomePageProps) {
         blocked={blocked}
         onSubmit={(next) => void runSearch(next)}
         onCanSubmitChange={setCanSubmit}
+        onPlacesChange={setPlaced}
         onInvalid={() => flushSync(() => setSnap((s) => (s === "peek" ? "half" : s)))}
       />
       <ResultsPanel

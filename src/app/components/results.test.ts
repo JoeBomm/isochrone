@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import tokensCss from "../styles/tokens.css?raw";
 import {
   boundsOf,
+  medianFitBounds,
   errorCopy,
   formatMinutes,
   geometryCoordinates,
@@ -153,6 +154,37 @@ describe("boundsOf", () => {
       [1, 2],
       [1, 2],
     ]);
+  });
+});
+
+describe("medianFitBounds", () => {
+  it("is a point box for one location", () => {
+    expect(medianFitBounds([{ lat: 10, lng: 20 }])).toEqual([
+      [10, 20],
+      [10, 20],
+    ]);
+  });
+
+  it("centres on the median, not the mean, and contains every point", () => {
+    const pts = [
+      { lat: 50, lng: 0 },
+      { lat: 50.01, lng: 0.01 },
+      { lat: 60, lng: 20 },
+    ];
+    const [[s, w], [n, e]] = medianFitBounds(pts)!;
+    expect((s + n) / 2).toBeCloseTo(50.01);
+    expect((w + e) / 2).toBeCloseTo(0.01);
+    for (const p of pts) {
+      expect(p.lat).toBeGreaterThanOrEqual(s);
+      expect(p.lat).toBeLessThanOrEqual(n);
+      expect(p.lng).toBeGreaterThanOrEqual(w);
+      expect(p.lng).toBeLessThanOrEqual(e);
+    }
+  });
+
+  it("is null for nothing usable", () => {
+    expect(medianFitBounds([])).toBeNull();
+    expect(medianFitBounds([{ lat: Number.NaN, lng: 0 }])).toBeNull();
   });
 });
 

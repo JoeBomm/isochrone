@@ -1,4 +1,5 @@
 import type { ScoredCandidate } from "@/domain/scoring";
+import { medianPoint } from "@/domain/geometry";
 import type { Coordinate } from "@/domain/types";
 import type { ActionError } from "@/server/actionHandlers";
 import type { FindMeetingPointsResult } from "@/server/findMeetingPoints";
@@ -143,6 +144,24 @@ export function boundsOf(coords: readonly Coordinate[]): LatLngBounds | null {
     e = Math.max(e, c.lng);
   }
   return Number.isFinite(s) ? [[s, w], [n, e]] : null;
+}
+
+/**
+ * Box centred on the per-axis median of `coords` and just large enough to
+ * contain all of them. Fitting it centres the view on the median, so a pair
+ * of close points does not pull the view away from a far one. One point gives
+ * a zero-size box (the caller's max zoom decides how close to get).
+ */
+export function medianFitBounds(coords: readonly Coordinate[]): LatLngBounds | null {
+  const valid = coords.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+  if (valid.length === 0) return null;
+  const m = medianPoint(valid);
+  const dLat = Math.max(...valid.map((c) => Math.abs(c.lat - m.lat)));
+  const dLng = Math.max(...valid.map((c) => Math.abs(c.lng - m.lng)));
+  return [
+    [m.lat - dLat, m.lng - dLng],
+    [m.lat + dLat, m.lng + dLng],
+  ];
 }
 
 /** Every vertex of a GeoJSON Polygon/MultiPolygon as {lat,lng}. */
