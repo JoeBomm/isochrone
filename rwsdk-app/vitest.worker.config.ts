@@ -7,6 +7,12 @@ export default defineConfig({
   plugins: [
     cloudflareTest({
       wrangler: { configPath: "./dist/worker/wrangler.json" },
+      // Hermetic: the pool would otherwise load .dev.vars and spend the real
+      // ORS_API_KEY on live requests. A dummy key plus an unroutable base URL
+      // means these tests can never reach ORS (calls fail as "upstream").
+      miniflare: {
+        bindings: { ORS_API_KEY: "test-key-not-real", ORS_BASE_URL: "http://127.0.0.1:1" },
+      },
     }),
   ],
   test: {
