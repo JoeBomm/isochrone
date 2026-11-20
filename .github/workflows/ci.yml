@@ -83,6 +83,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
           # The alias becomes "<alias>-meeting-point-finder-staging" in a hostname, so the whole label must
           # stay within 63 characters (alias <= 34). Plain lowercase branch names are used as they are. A
           # name that had to be changed (e.g. "feature/foo" vs "feature-foo") or shortened gets a short hash
@@ -98,7 +99,11 @@ jobs:
           npx wrangler versions upload \
             --preview-alias "$alias" \
             --message "PR #${PR_NUMBER} (${alias}) @ ${SHA:0:7}"
-          url="$(jq -er 'select(.type=="version-upload") | .preview_alias_url' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n1)"
+          url="$(jq -r 'select(.type=="version-upload") | .preview_alias_url // empty' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n1)"
+          if [ -z "$url" ]; then
+            echo "::error::wrangler reported no preview alias URL. Is workers_dev / preview_urls enabled for the staging Worker?"
+            exit 1
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Wait for the preview to respond
         env:

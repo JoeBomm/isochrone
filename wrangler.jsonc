@@ -84,6 +84,10 @@
     "staging": {
       // Custom domain, already attached in the dashboard; declared here so the repo records it.
       "routes": [{ "pattern": "staging.wheretomeet.us", "custom_domain": true }],
+      // Declaring routes makes wrangler switch workers.dev OFF at deploy unless it is set explicitly. Staging
+      // needs it (and preview URLs) on: PR previews are uploaded versions served on workers.dev.
+      "workers_dev": true,
+      "preview_urls": true,
       "kv_namespaces": [
         { "binding": "CACHE", "id": "3da19f53a179406097177dc9c4a6ee7b" }
       ],
@@ -96,6 +100,9 @@
     },
     "production": {
       "routes": [{ "pattern": "wheretomeet.us", "custom_domain": true }],
+      // Production is served only on its custom domain; no workers.dev or preview URLs.
+      "workers_dev": false,
+      "preview_urls": false,
       "kv_namespaces": [
         { "binding": "CACHE", "id": "b48e19dd8252485f9292960220251c4e" }
       ],
