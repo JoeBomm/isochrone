@@ -300,12 +300,51 @@ describe("handleGeocode", () => {
     const s = setup();
     const r = await handleGeocode("  Berlin   Hbf ", s.deps);
     expect(r).toEqual({ ok: true, data: { results: [{ coordinate: A, label: "Somewhere" }] } });
-    expect(s.geocode).toHaveBeenCalledWith("Berlin Hbf");
+    expect(s.geocode).toHaveBeenCalledWith("Berlin Hbf", undefined);
     const key = await cacheKey(GEOCODE_CACHE_NAMESPACE, ["berlin hbf"]);
     expect(s.kv.puts[0]).toEqual({ key, ttl: CACHE_TTL.GEOCODE_SECONDS });
     const r2 = await handleGeocode("berlin HBF", s.deps);
     expect(r2.ok).toBe(true);
     expect(s.geocode).toHaveBeenCalledTimes(1);
+  });
+
+  it("biases toward the client focus, rounded, over the IP location, and keys the cache by it", async () => {
+    const s = setup();
+    s.deps.cf = { latitude: "48.85", longitude: "2.35" };
+    const r = await handleGeocode({ text: "12345", focus: { lat: 42.4614, lng: -83.1827 } }, s.deps);
+    expect(r.ok).toBe(true);
+    expect(s.geocode).toHaveBeenCalledWith("12345", { lat: 42.5, lng: -83.2 });
+    const key = await cacheKey(GEOCODE_CACHE_NAMESPACE, ["12345", { lat: 42.5, lng: -83.2 }]);
+    expect(s.kv.puts[0].key).toBe(key);
+    // Same grid cell: cache hit. Another cell or no focus: a separate entry.
+    await handleGeocode({ text: "12345", focus: { lat: 42.49, lng: -83.21 } }, s.deps);
+    expect(s.geocode).toHaveBeenCalledTimes(1);
+    await handleGeocode({ text: "12345", focus: { lat: 52.5, lng: 13.4 } }, s.deps);
+    expect(s.geocode).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the Cloudflare IP location when the client sends no focus", async () => {
+    const s = setup();
+    s.deps.cf = { latitude: "42.46140", longitude: "-83.18270", country: "US" };
+    await handleGeocode("12345", s.deps);
+    expect(s.geocode).toHaveBeenCalledWith("12345", { lat: 42.5, lng: -83.2 });
+  });
+
+  it("sends no focus when request.cf has no usable location", async () => {
+    for (const cf of [undefined, {}, { latitude: "", longitude: "" }, { latitude: "abc", longitude: "1" }, { latitude: "91", longitude: "0" }]) {
+      const s = setup();
+      s.deps.cf = cf;
+      await handleGeocode("Berlin", s.deps);
+      expect(s.geocode).toHaveBeenCalledWith("Berlin", undefined);
+    }
+  });
+
+  it("rejects an invalid focus as a validation error", async () => {
+    const s = setup();
+    const r = await handleGeocode({ text: "Berlin", focus: { lat: 200, lng: 0 } }, s.deps);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.code).toBe("validation");
+    expect(s.createOrs).not.toHaveBeenCalled();
   });
 
   it("maps zero results to not_found and does not cache it", async () => {

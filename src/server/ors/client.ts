@@ -22,7 +22,8 @@ export interface OrsClient {
     minutes: number,
     mode: TravelMode,
   ): Promise<GeoPolygon | GeoMultiPolygon>;
-  geocode(query: string): Promise<{ coordinate: Coordinate; label: string }[]>;
+  /** `focus` biases ranking toward a point (Pelias focus.point); it never filters. */
+  geocode(query: string, focus?: Coordinate): Promise<{ coordinate: Coordinate; label: string }[]>;
 }
 
 export interface OrsClientOptions {
@@ -148,8 +149,12 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
      * loses the house number and returns streets named "Penn"). No `layers`
      * filter, so towns and regions come back as well as addresses and venues.
      */
-    async geocode(query) {
+    async geocode(query, focus) {
       const params = new URLSearchParams({ text: query, size: "5" });
+      if (focus) {
+        params.set("focus.point.lat", String(focus.lat));
+        params.set("focus.point.lon", String(focus.lng));
+      }
       const data = await request(`${baseUrl}${GEOCODE_PATH}/autocomplete?${params}`, {
         method: "GET",
         headers: { ...authHeaders, Accept: "application/json" },

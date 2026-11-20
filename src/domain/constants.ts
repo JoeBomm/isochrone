@@ -34,6 +34,11 @@ export const ISOCHRONE_MINUTES = { MIN: 1, MAX: 60 } as const;
 // Geocode query length cap (after trimming / whitespace collapsing).
 export const GEOCODE_QUERY_MAX_LENGTH = 200;
 
+// Decimal places the geocode focus point is rounded to (1 = ~11 km). Coarse on
+// purpose: the focus only biases ranking, a coarse grid keeps the KV hit rate
+// up, and no precise location is sent upstream.
+export const GEOCODE_FOCUS_DECIMALS = 1;
+
 export const API_CONFIG = {
   MATRIX_TIMEOUT_MS: 45000,
   ISOCHRONE_TIMEOUT_MS: 30000,

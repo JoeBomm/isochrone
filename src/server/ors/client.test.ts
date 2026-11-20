@@ -195,6 +195,20 @@ describe("geocode", () => {
     expectKeyOnlyInHeader(calls[0]);
   });
 
+  it("sends focus.point only when a focus is given", async () => {
+    const { fetchFn, calls } = fakeFetch(() => json({ features: [] }));
+    const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });
+    await client.geocode("12345");
+    await client.geocode("12345", { lat: 42.5, lng: -83.2 });
+    const plain = new URL(calls[0].url).searchParams;
+    expect(plain.has("focus.point.lat")).toBe(false);
+    expect(plain.has("focus.point.lon")).toBe(false);
+    const focused = new URL(calls[1].url).searchParams;
+    expect(focused.get("focus.point.lat")).toBe("42.5");
+    expect(focused.get("focus.point.lon")).toBe("-83.2");
+    expect(focused.has("boundary.country")).toBe(false);
+  });
+
   it("returns [] for empty features", async () => {
     const { fetchFn } = fakeFetch(() => json({ features: [] }));
     const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });

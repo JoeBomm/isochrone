@@ -6,6 +6,7 @@ import {
   pairwiseMidpoints,
   boundingBox,
   gridInBox,
+  roundCoordinate,
 } from "./geometry";
 
 const finite = (c: { lat: number; lng: number }) =>
@@ -82,5 +83,10 @@ describe("geometry", () => {
   it("gridInBox size 1 is finite (box center)", () => {
     const g = gridInBox({ south: 0, west: 0, north: 2, east: 2 }, 1);
     expect(g).toEqual([{ lat: 1, lng: 1 }]);
+  });
+
+  it("roundCoordinate rounds both axes and never returns -0", () => {
+    expect(roundCoordinate({ lat: 42.4614, lng: -83.1827 }, 1)).toEqual({ lat: 42.5, lng: -83.2 });
+    expect(Object.is(roundCoordinate({ lat: -0.01, lng: 0 }, 1).lat, 0)).toBe(true);
   });
 });

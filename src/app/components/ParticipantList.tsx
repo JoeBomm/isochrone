@@ -10,6 +10,7 @@ import {
   MIN_PARTICIPANTS,
   personColourIndex,
   personShape,
+  searchFocus,
   type ParticipantDraft,
   type ResolvedPlace,
 } from "./participants";
@@ -123,6 +124,7 @@ export function ParticipantList({
                   }
                   value={row.query}
                   place={row.place}
+                  focus={searchFocus(rows, row.id)}
                   error={errors[row.id]}
                   inputRef={addressRef(row.id)}
                   onChange={(text) => onQueryChange(row.id, text)}
