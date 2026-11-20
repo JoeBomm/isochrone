@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { flushSync } from "react-dom";
 import { MeetingForm, type MeetingFormValues, type PersonSummary, type ResolvedPerson } from "@/app/components/MeetingForm";
 import { MeetingMap } from "@/app/components/MeetingMap";
+import type { Coordinate } from "@/domain/types";
 import { GOALS } from "@/app/components/participants";
 import { PeekSummary, ResultsPanel } from "@/app/components/ResultsPanel";
 import {
@@ -63,6 +64,8 @@ const focusIsIn = (selector: string) =>
 export interface HomePageProps {
   /** `?debug=1`: show every evaluated candidate on the map (read on the server). */
   debug: boolean;
+  /** Approximate visitor location (IP-based, read on the server) to start the map at. */
+  initialCenter?: Coordinate;
 }
 
 /**
@@ -77,7 +80,7 @@ export interface HomePageProps {
  * are dropped too. Isochrones are cached per point/minutes/mode for the
  * current results, so re-selecting does not call the server again.
  */
-export function HomePage({ debug }: HomePageProps) {
+export function HomePage({ debug, initialCenter }: HomePageProps) {
   const [search, setSearch] = useState<SearchState>({ status: "idle" });
   const [values, setValues] = useState<MeetingFormValues | null>(null);
   // Resolved people in the form right now (shown on the map before any search).
@@ -260,6 +263,7 @@ export function HomePage({ debug }: HomePageProps) {
 
   const map = (
     <MeetingMap
+      initialCenter={initialCenter}
       participants={placedCoordinates}
       people={placedPeople}
       results={points.length ? points : emptyList}

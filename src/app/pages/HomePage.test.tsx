@@ -156,6 +156,11 @@ async function searchOk(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("HomePage: search states", () => {
+  it("passes the approximate visitor location to the map as its starting view", () => {
+    render(<HomePage debug={false} initialCenter={{ lat: 42.5, lng: -83.2 }} />);
+    expect(mapProps.last!.initialCenter).toEqual({ lat: 42.5, lng: -83.2 });
+  });
+
   it("starts empty, then loading, then shows ranked results and hands them to the map", async () => {
     const user = userEvent.setup();
     const pending = deferred<FindReturn>();

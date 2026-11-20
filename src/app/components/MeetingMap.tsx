@@ -33,11 +33,18 @@ export const TILE_MAX_ZOOM = 19;
 /** Neutral world view before anyone has searched. */
 const DEFAULT_CENTER: [number, number] = [30, 0];
 const DEFAULT_ZOOM = 2;
+/**
+ * Starting zoom around the visitor's approximate location: about a county
+ * (~100 km across on desktop, ~45 km on a phone, at mid latitudes).
+ */
+export const LOCAL_ZOOM = 10;
 /** Never zoom in further than this when fitting (e.g. everyone at one spot). */
 const FIT_MAX_ZOOM = 15;
 const EDGE_PADDING = 32;
 
 export interface MeetingMapProps {
+  /** Where to start (read once, when the map is created); the world view if absent. */
+  initialCenter?: Coordinate;
   /** Submitted start points, same order as `people`. */
   participants: readonly Coordinate[];
   people: readonly PersonSummary[];
@@ -109,14 +116,19 @@ export function MeetingMap(props: MeetingMapProps) {
         if (cancelled || !container) return;
         const L = ((mod as { default?: typeof Leaflet }).default ?? mod) as typeof Leaflet;
         const reduced = prefersReducedMotion();
+        const start = latest.current.initialCenter;
         map = L.map(container, {
-          center: DEFAULT_CENTER,
-          zoom: DEFAULT_ZOOM,
+          center: start ? [start.lat, start.lng] : DEFAULT_CENTER,
+          zoom: start ? LOCAL_ZOOM : DEFAULT_ZOOM,
           zoomAnimation: !reduced,
           fadeAnimation: !reduced,
           markerZoomAnimation: !reduced,
           attributionControl: false,
         });
+        // On mobile the bottom of the map is under the sheet: shift the
+        // start point up into the visible part (as for a selected result).
+        const inset = latest.current.bottomInset;
+        if (start && inset > 0) map.panBy([0, inset / 2], { animate: false });
         container.setAttribute("role", "group");
         container.setAttribute("aria-label", "Map. Arrow keys pan, plus and minus keys zoom.");
 

@@ -12,6 +12,7 @@ import {
   type Ref,
 } from "react";
 import { GEOCODE_QUERY_MAX_LENGTH } from "@/domain/constants";
+import type { Coordinate } from "@/domain/types";
 import { geocodeAction } from "@/server/actions";
 import { cx } from "./ui/cx";
 import { Spinner } from "./ui/Spinner";
@@ -65,6 +66,11 @@ export interface AddressFieldProps {
   onChange: (text: string) => void;
   /** The user chose a suggestion. The parent sets value to place.label. */
   onSelect: (place: ResolvedPlace) => void;
+  /**
+   * Point to rank nearby suggestions first (e.g. the other participants'
+   * centroid). Only biases ranking; far-away places are still returned.
+   */
+  focus?: Coordinate;
   /** Error from the form (e.g. unresolved on submit). Shown before search errors. */
   error?: string;
   inputRef?: Ref<HTMLInputElement>;
@@ -93,6 +99,7 @@ export function AddressField({
   place,
   onChange,
   onSelect,
+  focus,
   error: formError,
   inputRef,
 }: AddressFieldProps) {
@@ -151,8 +158,14 @@ export function AddressField({
     setOpen(results.length > 0 && hasFocus());
   };
 
+  // Read at search time (not captured by the debounce timer), so a search
+  // uses the focus current when it fires.
+  const latestFocus = useRef(focus);
+  latestFocus.current = focus;
+
   const search = async (query: string) => {
-    const key = query.trim().toLowerCase();
+    const searchFocus = latestFocus.current;
+    const key = `${query.trim().toLowerCase()}|${searchFocus ? `${searchFocus.lat},${searchFocus.lng}` : ""}`;
     const hit = cache.current.get(key);
     if (hit) {
       showResults(hit);
@@ -162,7 +175,7 @@ export function AddressField({
     setSearching(true);
     let response: GeocodeResponse;
     try {
-      response = await geocodeAction(query);
+      response = await geocodeAction(searchFocus ? { text: query, focus: searchFocus } : query);
     } catch {
       if (id !== sequence.current) return;
       setSearching(false);

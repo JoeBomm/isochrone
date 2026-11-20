@@ -143,6 +143,23 @@ export function parseIsochroneInput(x: unknown): ParsedIsochroneInput {
   return { center, minutes, mode };
 }
 
+export interface ParsedGeocodeInput {
+  text: string;
+  focus?: Coordinate;
+}
+
+/**
+ * Geocode input: a bare query string, or `{ text, focus? }` where `focus` is
+ * a point to bias results toward (e.g. the other participants' centroid).
+ */
+export function parseGeocodeInput(x: unknown): ParsedGeocodeInput {
+  if (typeof x === "string") return { text: parseGeocodeQuery(x) };
+  const o = record(x, "Search input");
+  const text = parseGeocodeQuery(o.text);
+  if (o.focus === undefined || o.focus === null) return { text };
+  return { text, focus: coordinate(o.focus, "Search focus") };
+}
+
 /** Trimmed, whitespace-collapsed query; rejects empty and over-long input. */
 export function parseGeocodeQuery(x: unknown): string {
   if (typeof x !== "string") throw new ValidationError("Search text must be a string");

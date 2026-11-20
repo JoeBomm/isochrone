@@ -188,10 +188,25 @@ describe("geocode", () => {
     const out = await client.geocode("Berlin & more");
     expect(out).toEqual([{ coordinate: { lat: 52.5, lng: 13.4 }, label: "Berlin, Germany" }]);
     const url = new URL(calls[0].url);
-    expect(url.pathname).toBe("/pelias/v1/search");
+    expect(url.pathname).toBe("/pelias/v1/autocomplete");
     expect(url.searchParams.get("text")).toBe("Berlin & more");
+    expect(url.searchParams.has("layers")).toBe(false);
     expect(calls[0].init.method).toBe("GET");
     expectKeyOnlyInHeader(calls[0]);
+  });
+
+  it("sends focus.point only when a focus is given", async () => {
+    const { fetchFn, calls } = fakeFetch(() => json({ features: [] }));
+    const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });
+    await client.geocode("12345");
+    await client.geocode("12345", { lat: 42.5, lng: -83.2 });
+    const plain = new URL(calls[0].url).searchParams;
+    expect(plain.has("focus.point.lat")).toBe(false);
+    expect(plain.has("focus.point.lon")).toBe(false);
+    const focused = new URL(calls[1].url).searchParams;
+    expect(focused.get("focus.point.lat")).toBe("42.5");
+    expect(focused.get("focus.point.lon")).toBe("-83.2");
+    expect(focused.has("boundary.country")).toBe(false);
   });
 
   it("returns [] for empty features", async () => {

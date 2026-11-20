@@ -8,7 +8,7 @@
  *                                  -> { durations: (seconds | null)[sources][destinations] }
  *   POST /openrouteservice/v2/isochrones/{profile}  { locations: [[lng, lat]], range: [seconds], range_type: "time", smoothing }
  *                                  -> GeoJSON FeatureCollection, features[0].geometry is a Polygon
- *   GET  /pelias/v1/search?text=&size=&layers=
+ *   GET  /pelias/v1/autocomplete?text=&size=
  *                                  -> GeoJSON FeatureCollection of Points with properties.label
  *
  * Key-in-header guard: every ORS request must carry `Authorization: <key>`
@@ -231,7 +231,7 @@ export async function startOrsStub(opts: { apiKey: string; port: number; host?: 
       });
     }
 
-    if (url.pathname === "/pelias/v1/search" && req.method === "GET") {
+    if (url.pathname === "/pelias/v1/autocomplete" && req.method === "GET") {
       stats.geocode += 1;
       const text = url.searchParams.get("text")?.trim().toLowerCase();
       if (!text) return reject(res, 400, "geocode: text is required");

@@ -77,13 +77,33 @@ jobs:
         id: upload
         env:
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+          # Branch names are attacker-controlled text: only ever read them from the environment, and
+          # reduce them to a hostname-safe alias before use.
+          BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
+          # The alias becomes "<alias>-meeting-point-finder-staging" in a hostname, so the whole label must
+          # stay within 63 characters (alias <= 34). Plain lowercase branch names are used as they are. A
+          # name that had to be changed (e.g. "feature/foo" vs "feature-foo") or shortened gets a short hash
+          # so two branches cannot end up sharing an alias.
+          max=34
+          alias="$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')"
+          if [ -z "$alias" ]; then
+            alias="pr-${PR_NUMBER}"
+          elif [ "$alias" != "$BRANCH" ] || [ "${#alias}" -gt "$max" ]; then
+            hash="$(printf '%s' "$BRANCH" | sha1sum | cut -c1-6)"
+            alias="$(printf '%s' "$alias" | cut -c1-$((max - 7)) | sed -E 's/-+$//')-${hash}"
+          fi
           npx wrangler versions upload \
-            --preview-alias "pr-${PR_NUMBER}" \
-            --message "PR #${PR_NUMBER} @ ${SHA:0:7}"
-          url="$(jq -er 'select(.type=="version-upload") | .preview_alias_url' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n1)"
+            --preview-alias "$alias" \
+            --message "PR #${PR_NUMBER} (${alias}) @ ${SHA:0:7}"
+          url="$(jq -r 'select(.type=="version-upload") | .preview_alias_url // empty' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n1)"
+          if [ -z "$url" ]; then
+            echo "::error::wrangler reported no preview alias URL. Is workers_dev / preview_urls enabled for the staging Worker?"
+            exit 1
+          fi
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Wait for the preview to respond
         env:

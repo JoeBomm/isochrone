@@ -29,7 +29,7 @@ function deferred<T>() {
 
 const onSelect = vi.fn<(place: ResolvedPlace) => void>();
 
-function Harness({ error }: { error?: string }) {
+function Harness({ error, focus }: { error?: string; focus?: { lat: number; lng: number } }) {
   const [value, setValue] = useState("");
   const [place, setPlace] = useState<ResolvedPlace | null>(null);
   return (
@@ -38,6 +38,7 @@ function Harness({ error }: { error?: string }) {
         label="Starting address for Ana"
         value={value}
         place={place}
+        focus={focus}
         error={error}
         onChange={(text) => {
           setValue(text);
@@ -54,9 +55,9 @@ function Harness({ error }: { error?: string }) {
   );
 }
 
-function setup() {
+function setup(focus?: { lat: number; lng: number }) {
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-  render(<Harness />);
+  render(<Harness focus={focus} />);
   const input = screen.getByRole("combobox", { name: "Starting address for Ana" });
   return { user, input: input as HTMLInputElement };
 }
@@ -359,5 +360,23 @@ describe("AddressField: errors", () => {
     expect(input.getAttribute("aria-invalid")).toBe("true");
     await user.type(input, "s");
     expect(input.hasAttribute("aria-invalid")).toBe(false);
+  });
+});
+
+describe("AddressField: search focus", () => {
+  it("sends the bare query without a focus, and { text, focus } with one", async () => {
+    geocode.mockResolvedValue(results("Somewhere"));
+    const plain = setup();
+    await plain.user.type(plain.input, "12345");
+    await advance(300);
+    expect(geocode).toHaveBeenLastCalledWith("12345");
+  });
+
+  it("passes the focus to the server", async () => {
+    geocode.mockResolvedValue(results("Somewhere"));
+    const { user, input } = setup({ lat: 42.5, lng: -83.2 });
+    await user.type(input, "12345");
+    await advance(300);
+    expect(geocode).toHaveBeenLastCalledWith({ text: "12345", focus: { lat: 42.5, lng: -83.2 } });
   });
 });

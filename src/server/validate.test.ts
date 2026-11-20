@@ -12,6 +12,7 @@ import { ValidationError } from "./findMeetingPoints";
 import {
   matrixRoutes,
   parseFindInput,
+  parseGeocodeInput,
   parseGeocodeQuery,
   parseIsochroneInput,
 } from "./validate";
@@ -138,6 +139,25 @@ describe("parseIsochroneInput", () => {
   it("accepts the minutes bounds", () => {
     expect(() => parseIsochroneInput({ ...iso, minutes: ISOCHRONE_MINUTES.MIN })).not.toThrow();
     expect(() => parseIsochroneInput({ ...iso, minutes: ISOCHRONE_MINUTES.MAX })).not.toThrow();
+  });
+});
+
+describe("parseGeocodeInput", () => {
+  it("accepts a bare string or { text, focus? }", () => {
+    expect(parseGeocodeInput("  Berlin ")).toEqual({ text: "Berlin" });
+    expect(parseGeocodeInput({ text: "Berlin" })).toEqual({ text: "Berlin" });
+    expect(parseGeocodeInput({ text: "Berlin", focus: null })).toEqual({ text: "Berlin" });
+    expect(parseGeocodeInput({ text: "Berlin", focus: { lat: 52.5, lng: 13.4 } })).toEqual({
+      text: "Berlin",
+      focus: { lat: 52.5, lng: 13.4 },
+    });
+  });
+
+  it("rejects bad text and bad focus", () => {
+    expect(() => parseGeocodeInput({ text: "" })).toThrow(ValidationError);
+    expect(() => parseGeocodeInput(42)).toThrow(ValidationError);
+    expect(() => parseGeocodeInput({ text: "x", focus: { lat: 0, lng: 181 } })).toThrow(ValidationError);
+    expect(() => parseGeocodeInput({ text: "x", focus: "here" })).toThrow(ValidationError);
   });
 });
 

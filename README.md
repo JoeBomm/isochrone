@@ -77,7 +77,7 @@ local development only; never deploy it.
 `.github/workflows/ci.yml` runs on every pull request and every push to `main`:
 
 - **Pull request:** type check, unit, worker and e2e tests, then an uploaded (not deployed) **staging preview
-  version**. Its URL (`https://pr-<number>-meeting-point-finder-staging.<subdomain>.workers.dev`) is posted as a
+  version**. Its URL (`https://<branch>-meeting-point-finder-staging.<subdomain>.workers.dev`) is posted as a
   comment on the PR. It uses the staging KV cache and the shared ORS quota. `staging.wheretomeet.us` is unchanged.
   PRs from forks get no secrets and no preview.
 - **Push to `main`:** the same checks, then deploy staging, then deploy production (the `production` GitHub

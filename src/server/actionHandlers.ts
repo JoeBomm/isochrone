@@ -1,5 +1,8 @@
-import { CACHE_TTL } from "../domain/constants";
+import { CACHE_TTL, GEOCODE_FOCUS_DECIMALS } from "../domain/constants";
+import { roundCoordinate } from "../domain/geometry";
+import type { Coordinate } from "../domain/types";
 import { cached, cacheKey } from "./cache";
+import { approximateLocation } from "./cfLocation";
 import {
   findMeetingPoints,
   NoReachablePointError,
@@ -15,7 +18,7 @@ import {
 } from "./ors/client";
 import { OrsError } from "./ors/errors";
 import { checkRateLimit, clientIdFromHeaders, type RateLimiterLike } from "./rateLimit";
-import { parseFindInput, parseGeocodeQuery, parseIsochroneInput } from "./validate";
+import { parseFindInput, parseGeocodeInput, parseIsochroneInput } from "./validate";
 
 /**
  * Logic behind the "use server" functions in actions.ts, with every
@@ -56,6 +59,8 @@ export interface ServerEnv {
 export interface ActionDeps {
   env: ServerEnv;
   headers: Headers;
+  /** Cloudflare request metadata (`request.cf`); its IP-based latitude/longitude is a geocode focus fallback. */
+  cf?: unknown;
   createOrs?: (opts: OrsClientOptions) => OrsClient;
 }
 
@@ -153,6 +158,13 @@ const isGeometry = (v: unknown): v is GeoPolygon | GeoMultiPolygon =>
   ((v as { type?: unknown }).type === "Polygon" || (v as { type?: unknown }).type === "MultiPolygon") &&
   Array.isArray((v as { coordinates?: unknown }).coordinates);
 
+/**
+ * Cache-key namespace for geocode results. Changed from "geocode" when the
+ * client moved from Pelias /search to /autocomplete, so week-old /search
+ * results in KV are not served.
+ */
+export const GEOCODE_CACHE_NAMESPACE = "geocode-autocomplete";
+
 const isGeocodeResults = (v: unknown): v is GeocodeResult[] =>
   Array.isArray(v) &&
   v.length > 0 &&
@@ -203,27 +215,43 @@ export function handleIsochrone(
   );
 }
 
+/**
+ * Point to bias geocoding toward: the client's focus (other participants'
+ * centroid) if given, else the caller's IP location, rounded to a coarse grid
+ * (GEOCODE_FOCUS_DECIMALS). Undefined means no bias.
+ */
+export function geocodeFocus(clientFocus: Coordinate | undefined, cf: unknown): Coordinate | undefined {
+  return clientFocus ? roundCoordinate(clientFocus, GEOCODE_FOCUS_DECIMALS) : approximateLocation(cf);
+}
+
 export function handleGeocode(
-  query: unknown,
+  input: unknown,
   deps: ActionDeps,
 ): Promise<ActionResult<{ results: GeocodeResult[] }>> {
   let q!: string;
+  let focus: Coordinate | undefined;
   return run(
     deps,
     deps.env.GEOCODE_RATE_LIMITER,
     () => {
-      q = parseGeocodeQuery(query);
+      const parsed = parseGeocodeInput(input);
+      q = parsed.text;
+      focus = geocodeFocus(parsed.focus, deps.cf);
     },
     async (ors) => {
       // Geocoding is case-insensitive, so the cache key folds case; ORS gets
-      // the trimmed, whitespace-collapsed query.
-      const key = await cacheKey("geocode", [q.toLowerCase()]);
+      // the trimmed, whitespace-collapsed query. The focus changes ranking, so
+      // it is part of the key (unfocused keys stay as they were).
+      const key = await cacheKey(
+        GEOCODE_CACHE_NAMESPACE,
+        focus ? [q.toLowerCase(), focus] : [q.toLowerCase()],
+      );
       const results = await cached(
         deps.env.CACHE,
         key,
         CACHE_TTL.GEOCODE_SECONDS,
         async () => {
-          const r = await ors.geocode(q);
+          const r = await ors.geocode(q, focus);
           // Throwing keeps "no results" out of the cache (only successes are cached).
           if (r.length === 0) throw new GeocodeNotFound();
           return r;

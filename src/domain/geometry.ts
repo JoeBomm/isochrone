@@ -29,6 +29,12 @@ export function centroid(ps: Coordinate[]): Coordinate {
   };
 }
 
+/** Round both axes to `decimals` places ("+ 0" turns -0 into 0). */
+export function roundCoordinate(c: Coordinate, decimals: number): Coordinate {
+  const f = 10 ** decimals;
+  return { lat: Math.round(c.lat * f) / f + 0, lng: Math.round(c.lng * f) / f + 0 };
+}
+
 function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
