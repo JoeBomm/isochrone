@@ -30,7 +30,7 @@ const root = fileURLToPath(new URL(".", import.meta.url));
 // real ORS endpoint). Refuse to run rather than risk that.
 if (existsSync(`${root}.dev.vars`)) {
   throw new Error(
-    "e2e: rwsdk-app/.dev.vars exists. The e2e dev server passes a fake ORS key and the stub URL through " +
+    "e2e: .dev.vars exists. The e2e dev server passes a fake ORS key and the stub URL through " +
       "the process environment, which wrangler ignores while .dev.vars exists. Move it aside and re-run.",
   );
 }
