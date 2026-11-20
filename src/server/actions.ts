@@ -45,7 +45,10 @@ import {
 // ORS_API_KEY / ORS_BASE_URL are not in the generated Env type (secrets are
 // not declared in wrangler.jsonc), hence the cast to our own interface.
 const serverEnv = () => env as unknown as ServerEnv;
-const deps = () => ({ env: serverEnv(), headers: getRequestInfo().request.headers });
+const deps = () => {
+  const { request } = getRequestInfo();
+  return { env: serverEnv(), headers: request.headers, cf: request.cf };
+};
 
 // Keep `{ method: "POST" }` with double quotes: rwsdk's transform reads the
 // method with a "..."-only pattern and silently falls back to GET otherwise
@@ -61,6 +64,7 @@ export const getIsochroneAction = serverQuery(
 );
 
 export const geocodeAction = serverQuery(
-  async (query: string) => handleGeocode(query, deps()),
+  async (input: string | { text: string; focus?: { lat: number; lng: number } }) =>
+    handleGeocode(input, deps()),
   { method: "POST" }
 );

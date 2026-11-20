@@ -32,7 +32,8 @@ function ok(...labels: string[]) {
 beforeEach(() => {
   vi.useFakeTimers();
   geocode.mockReset();
-  geocode.mockImplementation(async (q: string) => {
+  geocode.mockImplementation(async (input) => {
+    const q = typeof input === "string" ? input : input.text;
     const hit = Object.keys(PLACES).find((k) => k.toLowerCase() === q.toLowerCase());
     return hit
       ? ok(hit)

@@ -1,4 +1,10 @@
-import { ISOCHRONE_MINUTES, MAX_PARTICIPANTS, MIN_PARTICIPANTS } from "@/domain/constants";
+import {
+  GEOCODE_FOCUS_DECIMALS,
+  ISOCHRONE_MINUTES,
+  MAX_PARTICIPANTS,
+  MIN_PARTICIPANTS,
+} from "@/domain/constants";
+import { centroid, roundCoordinate } from "@/domain/geometry";
 import type { Coordinate, OptimizationGoal, TravelMode } from "@/domain/types";
 
 /**
@@ -92,6 +98,20 @@ export function personColourIndex(slot: number): number {
 /** People 7+ get a square badge so they differ from 1-6 by shape, not only by text. */
 export function personShape(slot: number): "round" | "square" {
   return slot >= PERSON_COLOUR_COUNT ? "square" : "round";
+}
+
+/**
+ * Point to bias address search toward for row `id`: the centroid of the other
+ * rows' resolved places, rounded like the server does (so equal focus = equal
+ * cache entry). Undefined when no other row is resolved; the server then
+ * falls back to the caller's IP location.
+ */
+export function searchFocus(
+  rows: Pick<ParticipantDraft, "id" | "place">[],
+  id: string,
+): Coordinate | undefined {
+  const others = rows.flatMap((r) => (r.id !== id && r.place ? [r.place.coordinate] : []));
+  return others.length > 0 ? roundCoordinate(centroid(others), GEOCODE_FOCUS_DECIMALS) : undefined;
 }
 
 export function displayName(draft: Pick<ParticipantDraft, "name" | "slot">): string {

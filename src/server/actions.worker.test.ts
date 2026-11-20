@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 import type { Coordinate } from "../domain/types";
 import {
+  GEOCODE_CACHE_NAMESPACE,
   handleFindMeetingPoints,
   handleGeocode,
   handleIsochrone,
@@ -111,12 +112,12 @@ describe("handlers with real bindings", () => {
     const miss = await handleGeocode("Nowhere Town", s.d);
     expect(miss.ok).toBe(false);
     if (!miss.ok) expect(miss.error.code).toBe("not_found");
-    expect(await env.CACHE.get(await cacheKey("geocode", ["nowhere town"]))).toBeNull();
+    expect(await env.CACHE.get(await cacheKey(GEOCODE_CACHE_NAMESPACE, ["nowhere town"]))).toBeNull();
 
     expect((await handleGeocode(" Berlin ", s.d)).ok).toBe(true);
     expect((await handleGeocode("BERLIN", s.d)).ok).toBe(true);
     expect(s.geocode).toHaveBeenCalledTimes(2);
-    expect(await env.CACHE.get(await cacheKey("geocode", ["berlin"]))).not.toBeNull();
+    expect(await env.CACHE.get(await cacheKey(GEOCODE_CACHE_NAMESPACE, ["berlin"]))).not.toBeNull();
   });
 
   it("missing ORS_API_KEY yields a generic upstream error", async () => {
