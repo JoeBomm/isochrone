@@ -63,5 +63,44 @@
   //
   // Do NOT put ORS_API_KEY here. It is a Worker secret:
   //   npx wrangler secret put ORS_API_KEY   (local dev: .dev.vars)
-  "vars": {}
+  "vars": {},
+
+  // ENVIRONMENTS. The top level above is local dev only (placeholder KV id,
+  // namespaces 4601-4603); never deploy it. Deploy with CLOUDFLARE_ENV set,
+  // because the Cloudflare Vite plugin picks the environment at build time:
+  //   CLOUDFLARE_ENV=staging npm run release      -> meeting-point-finder-staging
+  //   CLOUDFLARE_ENV=production npm run release   -> meeting-point-finder-production
+  // Bindings are NOT inherited, so each environment redeclares KV, rate
+  // limiters and vars. Rate-limit namespace_ids must be unique per Cloudflare
+  // account; the limits must stay identical to the top level (rateLimit.test.ts
+  // checks every binding in this file).
+  // Create each KV namespace, then replace its placeholder id:
+  //   npx wrangler kv namespace create CACHE --env staging
+  //   npx wrangler kv namespace create CACHE --env production
+  // Secrets are per environment: npx wrangler secret put ORS_API_KEY --env <name>
+  // (staging and production currently share one ORS key and its free-tier quota).
+  "env": {
+    "staging": {
+      "kv_namespaces": [
+        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+      ],
+      "ratelimits": [
+        { "name": "FIND_RATE_LIMITER", "namespace_id": "4611", "simple": { "limit": 5, "period": 60 } },
+        { "name": "ISOCHRONE_RATE_LIMITER", "namespace_id": "4612", "simple": { "limit": 6, "period": 60 } },
+        { "name": "GEOCODE_RATE_LIMITER", "namespace_id": "4613", "simple": { "limit": 30, "period": 60 } }
+      ],
+      "vars": {}
+    },
+    "production": {
+      "kv_namespaces": [
+        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+      ],
+      "ratelimits": [
+        { "name": "FIND_RATE_LIMITER", "namespace_id": "4621", "simple": { "limit": 5, "period": 60 } },
+        { "name": "ISOCHRONE_RATE_LIMITER", "namespace_id": "4622", "simple": { "limit": 6, "period": 60 } },
+        { "name": "GEOCODE_RATE_LIMITER", "namespace_id": "4623", "simple": { "limit": 30, "period": 60 } }
+      ],
+      "vars": {}
+    }
+  }
 }

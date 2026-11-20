@@ -15,19 +15,28 @@ afterEach(() => vi.restoreAllMocks());
 describe("wrangler.jsonc ratelimits", () => {
   // One binding per line: { "name": ..., "namespace_id": ..., "simple": { "limit": N, "period": P } }
   const config = readFileSync(new URL("../../wrangler.jsonc", import.meta.url), "utf8");
-  const bindings = new Map(
-    [...config.matchAll(/"name":\s*"(\w+_RATE_LIMITER)".*?"limit":\s*(\d+),\s*"period":\s*(\d+)/g)].map((m) => [
-      m[1],
-      { limit: Number(m[2]), period: Number(m[3]) },
-    ]),
-  );
+  const all = [
+    ...config.matchAll(/"name":\s*"(\w+_RATE_LIMITER)",\s*"namespace_id":\s*"(\d+)".*?"limit":\s*(\d+),\s*"period":\s*(\d+)/g),
+  ].map((m) => ({ name: m[1], namespaceId: m[2], limit: Number(m[3]), period: Number(m[4]) }));
+  const expected = {
+    FIND_RATE_LIMITER: { limit: RATE_LIMITS.find, period: RATE_LIMIT_PERIOD_SECONDS },
+    ISOCHRONE_RATE_LIMITER: { limit: RATE_LIMITS.isochrone, period: RATE_LIMIT_PERIOD_SECONDS },
+    GEOCODE_RATE_LIMITER: { limit: RATE_LIMITS.geocode, period: RATE_LIMIT_PERIOD_SECONDS },
+  } as const;
 
-  it("match RATE_LIMITS and RATE_LIMIT_PERIOD_SECONDS", () => {
-    expect(Object.fromEntries(bindings)).toEqual({
-      FIND_RATE_LIMITER: { limit: RATE_LIMITS.find, period: RATE_LIMIT_PERIOD_SECONDS },
-      ISOCHRONE_RATE_LIMITER: { limit: RATE_LIMITS.isochrone, period: RATE_LIMIT_PERIOD_SECONDS },
-      GEOCODE_RATE_LIMITER: { limit: RATE_LIMITS.geocode, period: RATE_LIMIT_PERIOD_SECONDS },
-    });
+  it("declares all three limiters in the top level, staging and production", () => {
+    expect(all).toHaveLength(9);
+  });
+
+  it("every binding in every environment matches RATE_LIMITS and RATE_LIMIT_PERIOD_SECONDS", () => {
+    for (const { name, limit, period } of all) {
+      expect({ limit, period }).toEqual(expected[name as keyof typeof expected]);
+    }
+  });
+
+  it("uses a unique namespace_id per binding (they are account-wide)", () => {
+    const ids = all.map((b) => b.namespaceId);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("keep each per-client limit below the ORS Standard plan's per-minute quota", () => {
