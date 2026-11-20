@@ -1,0 +1,160 @@
+name: CI
+
+# Pull requests: run all checks, then upload a (non-deployed) staging preview version and comment its URL.
+# Pushes to main: run all checks, deploy staging, then deploy production.
+#
+# Requires repository secrets CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID. ORS_API_KEY is NOT used here:
+# it lives as a Worker secret per environment (npx wrangler secret put ORS_API_KEY --env <name>) and persists
+# across deploys and preview versions.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per PR (newer pushes cancel older ones). Runs on main queue up instead of cancelling a deploy.
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      # Builds, then runs the workerd tests. Uses a dummy ORS key and never calls ORS.
+      - run: npm run test:worker
+      - run: npx playwright install --with-deps chromium
+      # ORS is stubbed locally. There is no .dev.vars in CI, which the e2e config requires.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+
+  preview:
+    # Fork PRs get no secrets, so they can't deploy a preview.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # The Cloudflare Vite plugin selects the wrangler environment at build time.
+      CLOUDFLARE_ENV: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Upload preview version (not deployed)
+        id: upload
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          npx wrangler versions upload \
+            --preview-alias "pr-${PR_NUMBER}" \
+            --message "PR #${PR_NUMBER} @ ${SHA:0:7}"
+          url="$(jq -er 'select(.type=="version-upload") | .preview_alias_url' "$WRANGLER_OUTPUT_FILE_PATH" | tail -n1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Wait for the preview to respond
+        env:
+          URL: ${{ steps.upload.outputs.url }}
+        run: curl -fsS --retry 10 --retry-delay 5 --retry-all-errors -o /dev/null "$URL"
+      - name: Comment the preview URL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.upload.outputs.url }}
+        run: |
+          cat > "$RUNNER_TEMP/comment.md" <<EOF
+          ### Staging preview
+
+          ${URL}
+
+          Commit \`${SHA:0:7}\`. Uses the **staging** KV cache and the shared ORS quota, so real searches count
+          against it. Not deployed: \`staging.wheretomeet.us\` is unchanged.
+          EOF
+          gh pr comment "$PR_NUMBER" --body-file "$RUNNER_TEMP/comment.md" --edit-last --create-if-none
+
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ENV: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Not `npm run release`: its ensure-deploy-env step prompts and creates a stray secret.
+      - run: npx wrangler deploy
+      - name: Smoke test
+        run: curl -fsS --retry 10 --retry-delay 5 --retry-all-errors -o /dev/null https://staging.wheretomeet.us/
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Add required reviewers on this environment (Settings > Environments > production) for a manual gate.
+    environment:
+      name: production
+      url: https://wheretomeet.us
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx wrangler deploy
+      - name: Smoke test
+        run: curl -fsS --retry 10 --retry-delay 5 --retry-all-errors -o /dev/null https://wheretomeet.us/

@@ -72,6 +72,22 @@ local development only; never deploy it.
 | staging | `meeting-point-finder-staging` | https://staging.wheretomeet.us |
 | production | `meeting-point-finder-production` | https://wheretomeet.us |
 
+### Automatic (GitHub Actions)
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`:
+
+- **Pull request:** type check, unit, worker and e2e tests, then an uploaded (not deployed) **staging preview
+  version**. Its URL (`https://pr-<number>-meeting-point-finder-staging.<subdomain>.workers.dev`) is posted as a
+  comment on the PR. It uses the staging KV cache and the shared ORS quota. `staging.wheretomeet.us` is unchanged.
+  PRs from forks get no secrets and no preview.
+- **Push to `main`:** the same checks, then deploy staging, then deploy production (the `production` GitHub
+  Environment; add required reviewers there for a manual approval gate).
+- **Needs** the repository secrets `CLOUDFLARE_API_TOKEN` (an account token from the "Edit Cloudflare Workers"
+  template, scoped to this account and the `wheretomeet.us` zone; set an expiry and rotate it) and
+  `CLOUDFLARE_ACCOUNT_ID`. `ORS_API_KEY` is a Worker secret per environment, not a GitHub secret.
+
+### Manual
+
 The Cloudflare Vite plugin selects the environment at build time from `CLOUDFLARE_ENV` (not `--env`):
 
 ```shell
