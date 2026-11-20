@@ -1,0 +1,10 @@
+# Local development secrets. Copy to .dev.vars (git-ignored); never commit real values.
+#   cp .dev.vars.example .dev.vars
+#
+# Your OpenRouteService API key (https://account.heigit.org/). Sent only in the
+# Authorization header, server side. Deployed environments use a Worker secret
+# instead: npx wrangler secret put ORS_API_KEY --env <staging|production>
+ORS_API_KEY=
+
+# Optional: override the ORS host (e.g. a local stub). Unset = https://api.heigit.org
+# ORS_BASE_URL=http://127.0.0.1:5288

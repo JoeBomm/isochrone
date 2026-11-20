@@ -4,51 +4,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A RedwoodJS 8.9 (Node 20, Yarn 4) monorepo (`api/` + `web/` workspaces) that finds fair meeting points for several participants. It generates candidate ("hypothesis") points, scores them with one OpenRouteService (ORS) Matrix API call, and picks points that minimize the maximum travel time (minimax). Isochrone polygons are generated on demand for a chosen point.
+"Halfway": finds fair meeting points for several participants. A RedwoodSDK (rwsdk) app on Cloudflare Workers (React Server Components, KV cache, Workers Rate Limiting), using the openrouteservice (ORS) APIs on `api.heigit.org`. It generates candidate points, scores them with **one** ORS Matrix call, ranks them by goal (`MINIMAX` default, `MINIMIZE_TOTAL`, `MINIMIZE_VARIANCE`), and draws an isochrone on demand for the chosen point. Live at https://wheretomeet.us (staging: https://staging.wheretomeet.us). `README.md` has the user-facing overview.
+
+The repo previously held a RedwoodJS (GraphQL/Prisma/Redis) app. It was removed; it lives in git history and on the `snapshot/pre-rwsdk-rewrite` branch.
 
 ## Commands
 
-```bash
-yarn install
-cp .env.example .env            # needs OPENROUTE_SERVICE_API_KEY; REDIS_URL optional (falls back to in-memory cache)
-yarn rw prisma migrate dev      # SQLite via DATABASE_URL
-yarn rw exec seed
-yarn rw dev                     # web + api (ports come from redwood.toml: web 8915, api 8914, not the 8910 the README states)
+Node **22+** is required (`engines`). The default `node` on some machines is older; use `nvm use 22`.
 
-yarn rw test --no-watch                 # all tests
-yarn rw test api --no-watch             # api side only
-yarn rw test api geometry --no-watch    # filter by file-name pattern
-yarn rw test api -t "some test name" --no-watch   # filter by test name
-yarn rw type-check
-yarn rw lint
+```bash
+npm install
+cp .dev.vars.example .dev.vars   # put a real ORS_API_KEY in it
+npm run dev                      # vite dev, http://localhost:5173
+npm test                         # unit + property tests (Vitest, src/domain and src/server)
+npm run test:worker              # builds first, then runs *.worker.test.ts in workerd
+npm run test:e2e                 # Playwright, ORS stubbed (see quirks)
+npm run check                    # regenerate Worker types + tsc
+npx vitest run src/server/rateLimit.test.ts   # one file
 ```
 
-Tests are Jest. Many are property-based (`*.property.test.ts`, using `fast-check`).
+Deploy (never `npm run release`, see quirks). The environment is chosen at **build time** by `CLOUDFLARE_ENV`:
+
+```bash
+CLOUDFLARE_ENV=staging npm run build && CLOUDFLARE_ENV=staging npx wrangler deploy
+CLOUDFLARE_ENV=production npm run build && CLOUDFLARE_ENV=production npx wrangler deploy
+```
 
 ## Architecture
 
-**Request flow:** `web` calls GraphQL (`web/src/lib/graphql.ts`, mutations only, all `@skipAuth`) → `api/src/graphql/isochrones.sdl.ts` → resolvers in `api/src/services/isochrones.ts`.
+**Request flow:** client components (`src/app/components`) call three `"use server"` functions in `src/server/actions.ts` (`geocodeAction`, `findMeetingPointsAction`, `getIsochroneAction`). They are thin wrappers over `src/server/actionHandlers.ts`, which does, in order: rate limit (`rateLimit.ts`), validate (`validate.ts`), construct the ORS client, then cache (`cache.ts`, KV read-through) or ORS. Nothing touches KV or ORS before the rate check, so cached repeats still count against the limits.
 
-**Algorithm pipeline** (`findOptimalLocations` → `calculateOptimalLocationsSimplified` in `api/src/services/isochrones.ts`):
-1. Anchor points (centroid, median, participant locations, pairwise midpoints). These come from `generateBaselineHypothesisPoints` in the service file.
-2. Bounding-box grid points (`generateBoundingBoxGridPoints`, size via `gridSize`).
-3. `lib/algorithms/singleMatrix.ts` evaluates anchors and grid together in **one** Matrix API call (`apiCallCount` should be 1).
-4. `lib/algorithms/scoring.ts` scores by `OptimizationGoal` (MINIMAX, MINIMIZE_VARIANCE, MINIMIZE_TOTAL). Unreachable points are filtered out rather than failing the calculation.
-5. `lib/algorithms/deduplication.ts` merges points closer than `deduplicationThreshold`. The top `topM` are returned.
-6. The client then calls `generateIsochrone` for the selected point. Isochrones are not computed automatically.
+- `src/domain`: pure logic with no I/O (`geometry`, `candidates`, `scoring`, `dedupe`, `types`, `constants`). Tunables are in `constants.ts` (`TOP_M` 3, `GRID_SIZE` 7, `DEDUP_THRESHOLD_METERS` 2500, participant and minute limits, cache TTLs).
+- `src/server/findMeetingPoints.ts`: orchestration. One cached matrix call for anchors plus bounding-box grid; unreachable candidates are dropped; all-unreachable throws `NoReachablePointError`.
+- `src/server/ors/client.ts`: raw ORS client with typed `OrsError` kinds. Matrix and isochrones use `/openrouteservice/v2/...`, geocoding uses `/pelias/v1/search`, all on `https://api.heigit.org` (overridable with `ORS_BASE_URL`). The key goes only in the `Authorization` header, never in a URL.
+- `src/server/cache.ts`: `cacheKey` rounds coordinates to 3 decimals (~100 m) and hashes; `cached()` treats KV failures as misses and never caches errors. TTLs: geocode 7 days, matrix and isochrone 24 hours.
+- `src/app`: UI. `components/ui` are design primitives, `components/shell` the app shell, `pages/home.tsx` the route, `pages/styleguide.tsx` a review page. Design direction is in `docs/superpowers/specs/ux-direction.md`. Map is Leaflet.
+- Errors reach the client as an `ActionResult` envelope (`{ ok: false, error: { code, message } }`), not thrown. Codes include `validation`, `not_found`, `no_reachable_point`, `quota`, `rate_limited`, `upstream`.
 
-`calculateMinimaxCenter` and `calculateIsochrone` are older mutations that are still in the schema.
+## Environments
 
-**External API layer:** `lib/openroute.ts` is the raw ORS client. `lib/cachedOpenroute.ts` wraps it with caching (`lib/cache.ts` Redis/in-memory, `lib/persistentCache.ts`, location-keyed at ~100m precision). `lib/batchedMatrix.ts` and `lib/matrix.ts` handle matrix batching and evaluation. All ORS calls should go through the cached client to protect the free-tier quota.
+`wrangler.jsonc`: the **top level is local dev only** (placeholder KV id, rate-limit namespaces 4601-4603); never deploy it. `env.staging` and `env.production` each redeclare their own KV `CACHE`, three rate limiters (namespace ids 4611-4613 and 4621-4623, account-wide unique) and custom domain, because bindings are not inherited. Worker names are `meeting-point-finder-staging` and `-production`. They currently share one ORS key and its free-tier quota. `ORS_API_KEY` is a per-environment Worker secret (`npx wrangler secret put ORS_API_KEY --env <name>`); the value cannot be read back, and the user types secrets themselves.
 
-**Tunables** live in `api/src/lib/constants.ts` (`ALGORITHM_DEFAULTS`, `VALIDATION_LIMITS`). The SDL default arguments (`topM = 5`, `gridSize = 5`, threshold `5000`) differ from the constants (3, 7, 2500). Check which one actually applies before changing either.
+## Quirks that cost time
 
-**Web:** `web/src/pages/HomePage` composes the components in `web/src/components`: `Map` (Leaflet), `LocationInput`, `IsochroneControls`, `DeveloperOptions`/`DebugControls` (hypothesis-point visualization). `web/src/lib/concurrencyController.ts` throttles API requests. MUI and Tailwind 4 are both in use.
-
-## Repo quirks
-
-- **Docs are partly stale.** `README.md` and `DEVELOPER_GUIDE.md` describe a three-mode pipeline (Baseline / Coarse Grid / Full Refinement) and `lib/optimization.ts`. That file doesn't exist. The current implementation is the single-matrix flow above. `lib/algorithms/localRefinement.ts` and the `generateLocalRefinementHypothesisPoints` export are leftovers (recent commits removed local grid sampling). Trust the code over the docs.
-- `rwsdk-project/` is a separate, in-progress RedwoodSDK/Cloudflare (D1, Workers) port with its own `package.json`. It is not part of the Yarn workspaces. `MIGRATION_GUIDE.md` and `scripts/migrate-to-d1.ts` belong to it. Ignore it unless the task is about the migration.
-- The root `index.html`, `app.js`, `examples.html` and `description` are a standalone prototype and are unrelated to the Redwood app.
-- `.kiro/` holds specs (`specs/*/requirements.md`, `design.md`, `tasks.md`) and steering docs from an earlier AI workflow. These are useful for the intent behind a feature (for example `specs/isochrone-center-point`).
-- `api/src/lib/db.ts` and `api/src/lib/database.ts` both exist.
+- **Do not run `npm run release`.** Its first step (`rw-scripts ensure-deploy-env`) prompts "proceed with deployment? (y/N)" (hangs if stdin stays open, silently skips on EOF) and creates a stray `TMP_WORKER_CREATED` secret. Use the build + `wrangler deploy` commands above.
+- **E2E refuses to run while `.dev.vars` exists** (wrangler would ignore the fake key and stub URL). Move it aside for the run and restore it after. Needs `npx playwright install chromium` once.
+- **`test:worker` is hermetic on purpose.** `vitest.worker.config.ts` pins a dummy `ORS_API_KEY` and an unroutable `ORS_BASE_URL`, because the workers pool otherwise loads `.dev.vars` and makes live ORS calls with the real key. "Connection refused" noise in its output is expected.
+- **Rate limits are triplicated:** `RATE_LIMITS` in `rateLimit.ts` and the `ratelimits` bindings in every environment of `wrangler.jsonc`. `rateLimit.test.ts` parses `wrangler.jsonc` with a regex, so keep each binding on **one line**.
+- **Server functions must keep the exact form** `export const NAME = serverQuery(fn, { method: "POST" });` (see the comment in `actions.ts`). POST keeps coordinates and addresses out of URLs; data-only queries avoid re-rendering the page.
+- **Never put `ORS_API_KEY` in `vars`, the client bundle or a URL.** `e2e` and `test:worker` check the bundle for it.
+- Secrets live in git-ignored `.dev.vars` and `.env*` (examples `.env.example`, `.dev.vars.example` are tracked). An old root `.env` from the Redwood app may still exist locally and is unused.
+- `docs/superpowers/plans/2026-11-19-rwsdk-rewrite.md` uses the old `rwsdk-app/` paths (the app was later moved to the repo root). `.kiro/` holds specs from the old app, useful for the intent behind the algorithm, not the current code.
+- ORS free-tier limits (matrix 500/day, 40/min; isochrones 500/day, 20/min; geocode 1000/day, 100/min) are on the account dashboard; `api.openrouteservice.org` is deprecated and gets a fraction of the quota.
