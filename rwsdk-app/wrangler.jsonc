@@ -74,7 +74,8 @@
   // limiters and vars. Rate-limit namespace_ids must be unique per Cloudflare
   // account; the limits must stay identical to the top level (rateLimit.test.ts
   // checks every binding in this file).
-  // Create each KV namespace, then replace its placeholder id:
+  // KV namespaces were created via the Cloudflare API (titles meeting-point-finder-<env>-CACHE).
+  // To recreate one, then replace its id:
   //   npx wrangler kv namespace create CACHE --env staging
   //   npx wrangler kv namespace create CACHE --env production
   // Secrets are per environment: npx wrangler secret put ORS_API_KEY --env <name>
@@ -82,7 +83,7 @@
   "env": {
     "staging": {
       "kv_namespaces": [
-        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+        { "binding": "CACHE", "id": "3da19f53a179406097177dc9c4a6ee7b" }
       ],
       "ratelimits": [
         { "name": "FIND_RATE_LIMITER", "namespace_id": "4611", "simple": { "limit": 5, "period": 60 } },
@@ -93,7 +94,7 @@
     },
     "production": {
       "kv_namespaces": [
-        { "binding": "CACHE", "id": "00000000000000000000000000000000" }
+        { "binding": "CACHE", "id": "b48e19dd8252485f9292960220251c4e" }
       ],
       "ratelimits": [
         { "name": "FIND_RATE_LIMITER", "namespace_id": "4621", "simple": { "limit": 5, "period": 60 } },
