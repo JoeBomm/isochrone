@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import type { Coordinate, OptimizationGoal, TravelMode } from "@/domain/types";
+import type { Coordinate, OptimizationGoal, PlaceType, TravelMode } from "@/domain/types";
 import { ParticipantList } from "./ParticipantList";
 import { TripOptions } from "./TripOptions";
 import { Button } from "./ui/Button";
@@ -78,6 +78,7 @@ export function MeetingForm({
   const [mode, setMode] = useState<TravelMode>("driving-car");
   const [goal, setGoal] = useState<OptimizationGoal>("MINIMAX");
   const [minutes, setMinutes] = useState(DEFAULT_ISOCHRONE_MINUTES);
+  const [placeType, setPlaceType] = useState<PlaceType | "">("");
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [announcement, setAnnouncement] = useState("");
   const [focusRow, setFocusRow] = useState<string | null>(null);
@@ -186,6 +187,7 @@ export function MeetingForm({
         participants: people.map((r) => r.place!.coordinate),
         mode,
         goal,
+        ...(placeType ? { placeType, minutes } : {}),
       },
       isochroneMinutes: minutes,
       people: people.map((r) => ({
@@ -224,9 +226,11 @@ export function MeetingForm({
           mode={mode}
           goal={goal}
           minutes={minutes}
+          placeType={placeType}
           onModeChange={setMode}
           onGoalChange={setGoal}
           onMinutesChange={setMinutes}
+          onPlaceTypeChange={setPlaceType}
         />
       </section>
 

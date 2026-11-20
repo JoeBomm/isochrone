@@ -8,6 +8,7 @@ import {
   stripPercent,
   timeScale,
   type IsochroneView,
+  type PlaceView,
   type ScoredCandidate,
 } from "./results";
 import { Button } from "./ui/Button";
@@ -23,6 +24,8 @@ export interface ResultsListProps {
   onSelect: (point: ScoredCandidate) => void;
   /** Isochrone state; shown on the row whose id matches. */
   isochrone?: IsochroneView | null;
+  /** Places per result id (only with a place type). The selected result's are classified against its isochrone. */
+  places?: Readonly<Record<string, readonly PlaceView[]>>;
 }
 
 /**
@@ -36,7 +39,7 @@ export interface ResultsListProps {
  *   so screen readers can read each time. Every strip uses one time scale
  *   across ALL results. Minutes are always text; colour is never the only cue.
  */
-export function ResultsList({ results, people, selectedId, onSelect, isochrone }: ResultsListProps) {
+export function ResultsList({ results, people, selectedId, onSelect, isochrone, places }: ResultsListProps) {
   const scale = timeScale(results);
   const listRef = useRef<HTMLOListElement>(null);
 
@@ -112,6 +115,7 @@ export function ResultsList({ results, people, selectedId, onSelect, isochrone }
                 );
               })}
             </ul>
+            {places?.[point.id]?.length ? <PlaceList views={places[point.id]} /> : null}
             {iso?.status === "ready" ? (
               <p className="result__note">
                 The map shades everywhere within {iso.minutes} min of here by {iso.modeLabel}.
@@ -129,5 +133,21 @@ export function ResultsList({ results, people, selectedId, onSelect, isochrone }
         );
       })}
     </ol>
+  );
+}
+
+function PlaceList({ views }: { views: readonly PlaceView[] }) {
+  return (
+    <ul className="places" aria-label="Places nearby">
+      {views.map(({ place, inside }) => (
+        <li key={place.id} className={cx("places__item", inside === false && "places__item--outside")}>
+          <span className="places__name">{place.name}</span>
+          {place.address ? <span className="places__address">{place.address}</span> : null}
+          {inside !== null ? (
+            <span className="places__status">{inside ? "In travel area" : "Outside travel area"}</span>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }

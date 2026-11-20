@@ -1,3 +1,5 @@
+import type { PlaceType } from "./types";
+
 // Ported from api/src/lib/constants.ts (ALGORITHM_DEFAULTS / VALIDATION_LIMITS).
 //
 // NOTE: the old GraphQL SDL defaults (topM=5, gridSize=5, threshold=5000)
@@ -43,6 +45,7 @@ export const API_CONFIG = {
   MATRIX_TIMEOUT_MS: 45000,
   ISOCHRONE_TIMEOUT_MS: 30000,
   GEOCODING_TIMEOUT_MS: 10000,
+  POIS_TIMEOUT_MS: 10000,
 } as const;
 
 // KV cache TTLs in seconds, from the old api/src/lib/cache.ts defaults
@@ -52,5 +55,45 @@ export const CACHE_TTL = {
   GEOCODE_SECONDS: 7 * 24 * 60 * 60,
   MATRIX_SECONDS: 24 * 60 * 60,
   ISOCHRONE_SECONDS: 24 * 60 * 60,
+  PLACES_SECONDS: 24 * 60 * 60,
 } as const;
 export const KV_MIN_TTL_SECONDS = 60;
+
+// ORS POIs (openpoiservice, OSM data; no ratings). Ids come from a
+// `{"request":"list"}` call on 2026-11-20. A type maps to specific categories
+// (`category_ids`) or to a whole group (`category_group_ids`).
+export type PlaceFilter =
+  | { readonly category_ids: readonly number[] }
+  | { readonly category_group_ids: readonly number[] };
+
+export const PLACE_FILTERS: Record<PlaceType, PlaceFilter> = {
+  accommodation: { category_group_ids: [100] }, // ORS spells the group "accomodation"
+  bar: { category_ids: [561, 569] }, // bar, pub
+  cafe: { category_ids: [564] },
+  cinema: { category_ids: [299] },
+  gym: { category_ids: [271] }, // fitness_centre
+  library: { category_ids: [133] },
+  museum: { category_ids: [134] },
+  park: { category_ids: [280] },
+  playground: { category_ids: [283] },
+  restaurant: { category_ids: [570] },
+  shop: { category_group_ids: [420] },
+};
+
+// Hosted API caps the search radius (buffer) at 2 km and the area at 50 km^2;
+// a point plus a buffer up to 2 km (~12.6 km^2) stays inside both.
+export const POI_MAX_BUFFER_METERS = 2000;
+export const POI_MIN_BUFFER_METERS = 250;
+export const MAX_PLACES_PER_POINT = 10;
+// Ranked candidates examined while looking for ones that have a matching
+// place; each costs at most one (cached) POI call.
+export const POI_MAX_ATTEMPTS = 6;
+
+// Rough straight-line speeds (m/s) used to turn "N minutes" into a place
+// search radius. Deliberately below real speeds: a straight line overstates
+// what the road network reaches.
+export const POI_RADIUS_SPEED_MPS = {
+  "foot-walking": 1.2,
+  "cycling-regular": 3.5,
+  "driving-car": 8,
+} as const;

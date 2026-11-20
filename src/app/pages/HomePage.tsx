@@ -18,6 +18,7 @@ import {
   type IsochroneView,
   type ScoredCandidate,
   type SearchState,
+  placeViews,
 } from "@/app/components/results";
 import { AppShell } from "@/app/components/shell/AppShell";
 import type { SheetSnap } from "@/app/components/shell/BottomSheet";
@@ -256,6 +257,18 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
         }
       : null;
 
+  // Places per result, with the selected one classified once its isochrone is
+  // ready (a client-side point-in-polygon test, no extra API call).
+  const resultPlaces = search.status === "success" ? search.result.places : undefined;
+  const selectedGeometry = iso.status === "ready" && iso.pointId === selectedId ? iso.geometry : null;
+  const placesById = useMemo(() => {
+    if (!resultPlaces) return undefined;
+    return Object.fromEntries(
+      Object.entries(resultPlaces).map(([id, list]) => [id, placeViews(list, id === selectedId ? selectedGeometry : null)]),
+    );
+  }, [resultPlaces, selectedId, selectedGeometry]);
+  const selectedPlaces = selectedId ? placesById?.[selectedId] : undefined;
+
   const goalLabel = GOALS.find((g) => g.value === values?.input.goal)?.label ?? GOALS[0].label;
   const pending = search.status === "loading";
   const blocked = Boolean(retryIn);
@@ -270,6 +283,7 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
       selectedId={selectedId}
       onSelect={select}
       isochrone={iso.status === "ready" && iso.pointId === selectedId ? iso.geometry : null}
+      places={selectedPlaces}
       debugCandidates={debug && search.status === "success" ? search.result.debugCandidates : undefined}
       bottomInset={sheetInsetPx(snap, viewport)}
     />
@@ -326,6 +340,7 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
         retryIn={retryIn}
         goalLabel={goalLabel}
         isochrone={isochroneView}
+        places={placesById}
         debugCount={debug && search.status === "success" ? search.result.debugCandidates.length : null}
         headingRef={headingRef}
       />

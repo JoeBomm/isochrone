@@ -213,6 +213,46 @@ test("happy path: two people, ranked results, isochrone for the chosen point", a
   expect(stats.matrix).toBeGreaterThan(0);
 });
 
+test("place type: places are listed, then classified against the isochrone of the selected point", async ({ page }) => {
+  await openApp(page);
+  await addPeople(page, NORWICH, CAMBRIDGE);
+  await form(page).getByRole("combobox", { name: "Place type" }).selectOption("cafe");
+
+  await submitAndSettle(page, () => submitButton(page).click());
+  await expectRankedResults(page);
+  const lists = page.getByRole("list", { name: "Places nearby" });
+  await expect(lists.first()).toBeVisible();
+  await expect(lists.first().getByText("Stub Nearby Cafe")).toBeVisible();
+  await expect(lists.first().getByText("1 Stub Street")).toBeVisible();
+  // Nothing is classified until an isochrone exists.
+  await expect(page.getByText("In travel area")).toHaveCount(0);
+  await expect(page.getByText("Outside travel area")).toHaveCount(0);
+
+  // Counted from this page's own traffic: desktop and mobile share one stub in parallel.
+  const serverCalls: string[] = [];
+  page.on("request", (r) => {
+    if (isServerCall({ url: () => r.url(), request: () => r })) serverCalls.push(r.url());
+  });
+  await page.locator(".result__select").first().click();
+  await expect(page.locator(".leaflet-overlay-pane path.map-isochrone")).toHaveCount(1);
+  await expect(page.getByText("In travel area")).toHaveCount(1);
+  await expect(page.getByText("Outside travel area")).toHaveCount(1);
+  await expect(page.locator(".leaflet-marker-pane .map-place--inside")).toHaveCount(1);
+  await expect(page.locator(".leaflet-marker-pane .map-place--outside")).toHaveCount(1);
+
+  // Classification is client-side: selecting costs exactly one server call (the isochrone).
+  expect(serverCalls).toHaveLength(1);
+  expect((await stubStats()).pois).toBeGreaterThan(0);
+});
+
+test("without a place type the results have no place lists", async ({ page }) => {
+  await openApp(page);
+  await addPeople(page, NORWICH, CAMBRIDGE);
+  await submitAndSettle(page, () => submitButton(page).click());
+  await expectRankedResults(page);
+  await expect(page.getByRole("list", { name: "Places nearby" })).toHaveCount(0);
+});
+
 test("rate_limited: the real limiter refuses, the countdown runs, submit re-enables", async ({ page }) => {
   await page.clock.install();
   await openApp(page);

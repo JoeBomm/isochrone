@@ -71,6 +71,7 @@ export interface StubStats {
   matrix: number;
   isochrone: number;
   geocode: number;
+  pois: number;
   violations: string[];
 }
 
@@ -141,7 +142,7 @@ function isochroneRing(center: LngLat, seconds: number, kmh: number): LngLat[] {
 }
 
 export async function startOrsStub(opts: { apiKey: string; port: number; host?: string }): Promise<OrsStub> {
-  const stats: StubStats = { matrix: 0, isochrone: 0, geocode: 0, violations: [] };
+  const stats: StubStats = { matrix: 0, isochrone: 0, geocode: 0, pois: 0, violations: [] };
   const reject = (res: http.ServerResponse, status: number, why: string) => {
     stats.violations.push(why);
     console.error(`[ors-stub] ${status}: ${why}`);
@@ -161,6 +162,36 @@ export async function startOrsStub(opts: { apiKey: string; port: number; host?: 
     if (auth === undefined) return reject(res, 401, `${req.method} ${url.pathname}: Authorization header missing`);
     if (auth !== opts.apiKey) {
       return reject(res, 401, `${req.method} ${url.pathname}: Authorization header is not the bare test key`);
+    }
+
+    if (url.pathname === "/openpoiservice/v0/pois" && req.method === "POST") {
+      stats.pois += 1;
+      const body = (await readJson(req)) as any;
+      const point = body?.geometry?.geojson;
+      const buffer = body?.geometry?.buffer;
+      if (body?.request !== "pois") return reject(res, 400, 'pois: request must be "pois"');
+      if (point?.type !== "Point" || !isLngLat(point.coordinates)) return reject(res, 400, "pois: geometry must be a Point");
+      if (typeof buffer !== "number" || buffer <= 0 || buffer > 2000) return reject(res, 400, "pois: buffer must be 1..2000 m");
+      const ids = body?.filters?.category_ids ?? body?.filters?.category_group_ids;
+      if (!Array.isArray(ids) || ids.length === 0 || !ids.every((i: unknown) => Number.isInteger(i))) {
+        return reject(res, 400, "pois: filters needs category_ids or category_group_ids (integers)");
+      }
+      const [lng, lat] = point.coordinates as [number, number];
+      // One place right at the point and one far away (outside any stub isochrone),
+      // so the UI's inside/outside classification has both cases. The far one
+      // ignores the buffer on purpose; the real service never returns it.
+      const feature = (id: number, name: string, dLat: number, tags: Record<string, string> = {}) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [lng, lat + dLat] },
+        properties: { osm_id: id, osm_type: 1, osm_tags: { name, ...tags } },
+      });
+      return send(res, 200, {
+        type: "FeatureCollection",
+        features: [
+          feature(1, "Stub Nearby Cafe", 0.0005, { "addr:housenumber": "1", "addr:street": "Stub Street" }),
+          feature(2, "Stub Faraway Cafe", 0.5),
+        ],
+      });
     }
 
     const ors = /^\/openrouteservice\/v2\/(matrix|isochrones)\/([a-z-]+)$/.exec(url.pathname);

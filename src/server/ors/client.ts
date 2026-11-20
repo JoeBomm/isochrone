@@ -1,4 +1,5 @@
-import type { Coordinate, TravelMode } from "../../domain/types";
+import type { Coordinate, Place, PlaceType, TravelMode } from "../../domain/types";
+import { PLACE_FILTERS } from "../../domain/constants";
 import { OrsError } from "./errors";
 
 export interface GeoPolygon {
@@ -24,6 +25,8 @@ export interface OrsClient {
   ): Promise<GeoPolygon | GeoMultiPolygon>;
   /** `focus` biases ranking toward a point (Pelias focus.point); it never filters. */
   geocode(query: string, focus?: Coordinate): Promise<{ coordinate: Coordinate; label: string }[]>;
+  /** OSM places of one type within `bufferMeters` of `center`, nearest first. Unnamed places are dropped. */
+  places(center: Coordinate, type: PlaceType, bufferMeters: number, limit: number): Promise<Place[]>;
 }
 
 export interface OrsClientOptions {
@@ -41,6 +44,7 @@ export interface OrsClientOptions {
 export const ORS_BASE_URL = "https://api.heigit.org";
 const ORS_PATH = "/openrouteservice/v2"; // matrix, isochrones
 const GEOCODE_PATH = "/pelias/v1"; // was /geocode on the old host
+const POIS_PATH = "/openpoiservice/v0/pois"; // not under /openrouteservice/
 
 /**
  * Docs checked 2026-11-19:
@@ -57,6 +61,13 @@ export const MATRIX_MAX_ROUTES = 3500;
 
 function toLngLat(c: Coordinate): [number, number] {
   return [c.lng, c.lat];
+}
+
+function addressOf(tags: Record<string, unknown>): string | undefined {
+  const str = (k: string) => (typeof tags[k] === "string" ? (tags[k] as string).trim() : "");
+  const street = [str("addr:housenumber"), str("addr:street")].filter(Boolean).join(" ");
+  const parts = [street, str("addr:city")].filter(Boolean);
+  return parts.length ? parts.join(", ") : undefined;
 }
 
 function errorForStatus(status: number, retryAfter: string | null): OrsError {
@@ -164,6 +175,38 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
         const [lng, lat] = f.geometry.coordinates as [number, number];
         return { coordinate: { lat, lng }, label: String(f.properties?.label ?? "") };
       });
+    },
+
+    async places(center, type, bufferMeters, limit) {
+      const data = await request(`${baseUrl}${POIS_PATH}`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          request: "pois",
+          geometry: { geojson: { type: "Point", coordinates: toLngLat(center) }, buffer: Math.round(bufferMeters) },
+          filters: PLACE_FILTERS[type],
+          limit,
+          sortby: "distance",
+        }),
+      });
+      if (!Array.isArray(data?.features)) {
+        throw new OrsError("upstream", "OpenRouteService POI response missing features");
+      }
+      const out: Place[] = [];
+      for (const f of data.features) {
+        const coords = f?.geometry?.coordinates;
+        const tags = f?.properties?.osm_tags ?? {};
+        const name = typeof tags.name === "string" ? tags.name.trim() : "";
+        if (!name || !Array.isArray(coords) || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) continue;
+        out.push({
+          id: `${f.properties?.osm_type ?? 0}/${f.properties?.osm_id ?? name}`,
+          name,
+          type,
+          coordinate: { lat: coords[1], lng: coords[0] },
+          address: addressOf(tags),
+        });
+      }
+      return out;
     },
   };
 }

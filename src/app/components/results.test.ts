@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import tokensCss from "../styles/tokens.css?raw";
 import {
   boundsOf,
+  formatRadius,
+  placeViews,
   medianFitBounds,
   errorCopy,
   formatMinutes,
@@ -225,5 +227,28 @@ describe("sheetInsetPx", () => {
     expect(sheetInsetPx("peek", vp)).toBe(152); // --sheet-peek 9.5rem
     expect(sheetInsetPx("half", vp)).toBe(406); // 50dvh
     expect(sheetInsetPx("full", vp)).toBe(406); // map hidden; keep the half framing
+  });
+});
+
+describe("placeViews / formatRadius", () => {
+  const square = { type: "Polygon" as const, coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] };
+  const mk = (id: string, lat: number, lng: number) => ({
+    id,
+    name: id,
+    type: "cafe" as const,
+    coordinate: { lat, lng },
+  });
+  it("is unknown (null) and order-preserving without a polygon", () => {
+    const v = placeViews([mk("a", 5, 5), mk("b", 0.5, 0.5)], null);
+    expect(v.map((x) => [x.place.id, x.inside])).toEqual([["a", null], ["b", null]]);
+  });
+  it("puts places inside the polygon first", () => {
+    const v = placeViews([mk("out", 5, 5), mk("in", 0.5, 0.5)], square);
+    expect(v.map((x) => [x.place.id, x.inside])).toEqual([["in", true], ["out", false]]);
+  });
+  it("formats radii", () => {
+    expect(formatRadius(2000)).toBe("2 km");
+    expect(formatRadius(1080)).toBe("1.1 km");
+    expect(formatRadius(250)).toBe("250 m");
   });
 });

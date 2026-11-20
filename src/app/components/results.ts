@@ -1,6 +1,6 @@
 import type { ScoredCandidate } from "@/domain/scoring";
-import { medianPoint } from "@/domain/geometry";
-import type { Coordinate } from "@/domain/types";
+import { medianPoint, pointInPolygon } from "@/domain/geometry";
+import type { Coordinate, Place } from "@/domain/types";
 import type { ActionError } from "@/server/actionHandlers";
 import type { FindMeetingPointsResult } from "@/server/findMeetingPoints";
 import type { GeoMultiPolygon, GeoPolygon } from "@/server/ors/client";
@@ -170,6 +170,30 @@ export function geometryCoordinates(geometry: IsochroneGeometry): Coordinate[] {
   const out: Coordinate[] = [];
   for (const rings of polygons) for (const ring of rings) for (const [lng, lat] of ring) out.push({ lat, lng });
   return out;
+}
+
+/** A place plus where it sits against the selected point's isochrone (null = not loaded yet). */
+export interface PlaceView {
+  place: Place;
+  inside: boolean | null;
+}
+
+/**
+ * Classify places against an isochrone with a point-in-polygon test (no API
+ * call). Without a polygon every place is "unknown". With one, places inside
+ * come first; order is otherwise kept (the server sends nearest first).
+ */
+export function placeViews(places: readonly Place[], geometry: IsochroneGeometry | null): PlaceView[] {
+  const views = places.map((place) => ({
+    place,
+    inside: geometry ? pointInPolygon(place.coordinate, geometry) : null,
+  }));
+  return geometry ? [...views.filter((v) => v.inside), ...views.filter((v) => !v.inside)] : views;
+}
+
+/** "1.1 km" / "250 m": the place-search radius for display. */
+export function formatRadius(meters: number): string {
+  return meters >= 1000 ? `${Math.round(meters / 100) / 10} km` : `${Math.round(meters)} m`;
 }
 
 /** Desktop breakpoint, matching shell.css. */

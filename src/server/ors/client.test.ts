@@ -224,3 +224,51 @@ describe("geocode", () => {
     }
   });
 });
+
+describe("places", () => {
+  const feature = (o: any) => ({
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [20.5, 10.5] },
+    properties: { osm_id: 7, osm_type: 1, osm_tags: { name: "Joe's", "addr:housenumber": "12", "addr:street": "Main St" }, ...o },
+  });
+
+  it("posts a point+buffer with category ids and maps features", async () => {
+    const { fetchFn, calls } = fakeFetch(() => json({ features: [feature({})] }));
+    const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });
+    const out = await client.places(A, "bar", 1234.6, 10);
+    expect(calls[0].url).toBe("https://api.heigit.org/openpoiservice/v0/pois");
+    const body = JSON.parse(String(calls[0].init.body));
+    expect(body.geometry).toEqual({ geojson: { type: "Point", coordinates: [20, 10] }, buffer: 1235 });
+    expect(body.filters).toEqual({ category_ids: [561, 569] });
+    expect(body.limit).toBe(10);
+    expectKeyOnlyInHeader(calls[0]);
+    expect(out).toEqual([
+      { id: "1/7", name: "Joe's", type: "bar", coordinate: { lat: 10.5, lng: 20.5 }, address: "12 Main St" },
+    ]);
+  });
+
+  it("filters a whole group by category_group_ids", async () => {
+    const { fetchFn, calls } = fakeFetch(() => json({ features: [] }));
+    const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });
+    await client.places(A, "shop", 500, 10);
+    await client.places(A, "accommodation", 500, 10);
+    expect(JSON.parse(String(calls[0].init.body)).filters).toEqual({ category_group_ids: [420] });
+    expect(JSON.parse(String(calls[1].init.body)).filters).toEqual({ category_group_ids: [100] });
+  });
+
+  it("drops unnamed places and tolerates missing address tags", async () => {
+    const { fetchFn } = fakeFetch(() =>
+      json({ features: [feature({ osm_tags: {} }), feature({ osm_tags: { name: "Plain" } })] }),
+    );
+    const out = await createOrsClient({ apiKey: KEY, fetch: fetchFn }).places(A, "cafe", 500, 10);
+    expect(out).toHaveLength(1);
+    expect(out[0].address).toBeUndefined();
+  });
+
+  it("throws upstream when features are missing", async () => {
+    const { fetchFn } = fakeFetch(() => json({}));
+    await expect(createOrsClient({ apiKey: KEY, fetch: fetchFn }).places(A, "park", 500, 10)).rejects.toMatchObject({
+      kind: "upstream",
+    });
+  });
+});

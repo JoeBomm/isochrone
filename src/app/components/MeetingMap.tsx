@@ -12,6 +12,7 @@ import {
   geometryCoordinates,
   medianFitBounds,
   type IsochroneGeometry,
+  type PlaceView,
   type ScoredCandidate,
 } from "./results";
 
@@ -54,6 +55,8 @@ export interface MeetingMapProps {
   onSelect: (point: ScoredCandidate) => void;
   /** Polygon for the selected result, or null. */
   isochrone: IsochroneGeometry | null;
+  /** Places of the selected result (inside/outside its isochrone once that has loaded). */
+  places?: readonly PlaceView[];
   /** Only with ?debug=1: every evaluated candidate. */
   debugCandidates?: readonly Candidate[];
   /** Map pixels hidden under the mobile sheet (0 on desktop). */
@@ -66,6 +69,7 @@ interface MapApi {
   participants: Leaflet.LayerGroup;
   results: Leaflet.LayerGroup;
   isochrone: Leaflet.LayerGroup;
+  places: Leaflet.LayerGroup;
   debug: Leaflet.LayerGroup;
 }
 
@@ -95,7 +99,7 @@ function escapeHtml(text: string): string {
 export function MeetingMap(props: MeetingMapProps) {
   // bottomInset is read through `latest` when a fit runs, so a sheet move
   // alone does not refit the map.
-  const { participants, people, results, selectedId, isochrone, debugCandidates } = props;
+  const { participants, people, results, selectedId, isochrone, places, debugCandidates } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const [api, setApi] = useState<MapApi | null>(null);
   const [failed, setFailed] = useState(false);
@@ -151,11 +155,13 @@ export function MeetingMap(props: MeetingMapProps) {
 
         // Pane order (all SVG in the overlay pane): isochrone below debug points.
         const isochroneLayer = L.layerGroup().addTo(map);
+        const placesLayer = L.layerGroup().addTo(map);
         const debugLayer = L.layerGroup().addTo(map);
         setApi({
           L,
           map,
           isochrone: isochroneLayer,
+          places: placesLayer,
           debug: debugLayer,
           participants: L.layerGroup().addTo(map),
           results: L.layerGroup().addTo(map),
@@ -293,6 +299,33 @@ export function MeetingMap(props: MeetingMapProps) {
     }).addTo(api.isochrone);
     fit(geometryCoordinates(isochrone));
   }, [api, isochrone]);
+
+  // Places of the selected result. Names and addresses come from OSM, so they
+  // are escaped; the label is readable by keyboard/screen-reader users via the
+  // marker's aria-label and the list, which has the same data.
+  useEffect(() => {
+    if (!api) return;
+    api.places.clearLayers();
+    for (const { place, inside } of places ?? []) {
+      const state = inside === null ? "unknown" : inside ? "inside" : "outside";
+      const marker = api.L.marker([place.coordinate.lat, place.coordinate.lng], {
+        icon: api.L.divIcon({
+          className: `map-place map-place--${state}`,
+          html: '<span class="map-place__dot"></span>',
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        }),
+        keyboard: false,
+        riseOnHover: true,
+      }).addTo(api.places);
+      const detail = [place.address ?? "", inside === null ? "" : inside ? "In travel area" : "Outside travel area"]
+        .filter(Boolean)
+        .map(escapeHtml)
+        .join("<br>");
+      marker.bindTooltip(`<strong>${escapeHtml(place.name)}</strong>${detail ? `<br>${detail}` : ""}`);
+      marker.getElement()?.setAttribute("aria-hidden", "true");
+    }
+  }, [api, places]);
 
   // Debug: every evaluated candidate (anchors filled, grid hollow).
   useEffect(() => {

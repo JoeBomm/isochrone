@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { generateCandidates } from "../domain/candidates";
 import { haversineMeters } from "../domain/geometry";
-import type { Coordinate } from "../domain/types";
+import type { Coordinate, Place } from "../domain/types";
 import { cacheKey } from "./cache";
 import {
   findMeetingPoints,
+  NoPlacesError,
   NoReachablePointError,
+  placeRadiusMeters,
   ValidationError,
 } from "./findMeetingPoints";
 import type { OrsClient } from "./ors/client";
@@ -173,5 +175,70 @@ describe("findMeetingPoints", () => {
       const { p } = run({ gridSize: 2, topM: 1, dedupeMeters: 100 });
       await expect(p).resolves.toBeDefined();
     });
+  });
+});
+
+describe("findMeetingPoints with a place type", () => {
+  const place = (n: string): Place => ({ id: `1/${n}`, name: n, type: "cafe", coordinate: A });
+
+  function orsWithPlaces(places: ReturnType<typeof vi.fn>) {
+    const { ors } = fakeOrs();
+    (ors as any).places = places;
+    return ors;
+  }
+  const input = { ...base, participants: [A, B, C], dedupeMeters: 100 };
+
+  it("makes no POI calls and adds no place fields when no type is given", async () => {
+    const places = vi.fn();
+    const r = await findMeetingPoints(input, { ors: orsWithPlaces(places), kv: fakeKv().kv });
+    expect(places).not.toHaveBeenCalled();
+    expect(r.places).toBeUndefined();
+    expect(r.placeRadiusMeters).toBeUndefined();
+  });
+
+  it("returns places per point id and the radius used", async () => {
+    const places = vi.fn(async () => [place("Joe's")]);
+    const r = await findMeetingPoints(
+      { ...input, placeType: "cafe", minutes: 10 },
+      { ors: orsWithPlaces(places), kv: fakeKv().kv },
+    );
+    expect(r.points).toHaveLength(3);
+    for (const p of r.points) expect(r.places![p.id]).toEqual([place("Joe's")]);
+    expect(r.placeRadiusMeters).toBe(placeRadiusMeters(10, "driving-car"));
+    expect(places.mock.calls[0].slice(1)).toEqual(["cafe", r.placeRadiusMeters, 10]);
+  });
+
+  it("skips ranked points with no matching place and takes the next ones", async () => {
+    const places = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([place("X")]);
+    const plain = await findMeetingPoints(input, { ors: orsWithPlaces(vi.fn()), kv: fakeKv().kv });
+    const r = await findMeetingPoints({ ...input, placeType: "bar" }, { ors: orsWithPlaces(places), kv: fakeKv().kv });
+    expect(r.points.map((p) => p.id)).not.toContain(plain.points[0].id);
+    expect(r.points).toHaveLength(3);
+  });
+
+  it("throws NoPlacesError (a NoReachablePointError) when nothing is found, within the attempt cap", async () => {
+    const places = vi.fn(async () => []);
+    const p = findMeetingPoints({ ...input, placeType: "gym" }, { ors: orsWithPlaces(places), kv: fakeKv().kv });
+    await expect(p).rejects.toBeInstanceOf(NoPlacesError);
+    await expect(p).rejects.toBeInstanceOf(NoReachablePointError);
+    expect(places.mock.calls.length).toBeLessThanOrEqual(6);
+  });
+
+  it("caches place lookups: an identical repeat makes no POI calls", async () => {
+    const places = vi.fn(async () => [place("Joe's")]);
+    const { kv } = fakeKv();
+    const ors = orsWithPlaces(places);
+    await findMeetingPoints({ ...input, placeType: "cafe" }, { ors, kv });
+    const first = places.mock.calls.length;
+    await findMeetingPoints({ ...input, placeType: "cafe" }, { ors, kv });
+    expect(places.mock.calls.length).toBe(first);
+  });
+
+  it("clamps the radius to the POI service limits", () => {
+    expect(placeRadiusMeters(60, "driving-car")).toBe(2000);
+    expect(placeRadiusMeters(1, "foot-walking")).toBe(250);
+    expect(placeRadiusMeters(15, "foot-walking")).toBe(1080);
   });
 });
