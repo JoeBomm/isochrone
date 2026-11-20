@@ -58,7 +58,7 @@
   ],
 
   // Optional non-secret var ORS_BASE_URL overrides the ORS endpoint (e2e
-  // mocks); unset = https://api.openrouteservice.org. Set it in .dev.vars for
+  // mocks); unset = https://api.heigit.org. Set it in .dev.vars for
   // local runs rather than here, so production always uses the real endpoint.
   //
   // Do NOT put ORS_API_KEY here. It is a Worker secret:

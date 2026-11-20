@@ -49,7 +49,7 @@ describe("matrix", () => {
     const out = await client.matrix([A, B], [B, C], "driving-car");
     expect(out).toEqual([[60, null], [120, 30]]);
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("https://api.openrouteservice.org/v2/matrix/driving-car");
+    expect(calls[0].url).toBe("https://api.heigit.org/openrouteservice/v2/matrix/driving-car");
     expect(calls[0].init.method).toBe("POST");
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
       locations: [[20, 10], [21, 11], [21, 11], [22, 12]],
@@ -83,7 +83,7 @@ describe("matrix", () => {
     const { fetchFn, calls } = fakeFetch(() => json({ durations: [[1]] }));
     const client = createOrsClient({ apiKey: KEY, fetch: fetchFn, baseUrl: "http://stub.local:9" });
     await client.matrix([A], [B], "cycling-regular");
-    expect(calls[0].url).toBe("http://stub.local:9/v2/matrix/cycling-regular");
+    expect(calls[0].url).toBe("http://stub.local:9/openrouteservice/v2/matrix/cycling-regular");
   });
 
   it("maps 429 to rate_limited with retryAfterSeconds", async () => {
@@ -140,7 +140,7 @@ describe("isochrone", () => {
     const client = createOrsClient({ apiKey: KEY, fetch: fetchFn });
     const out = await client.isochrone(A, 15, "foot-walking");
     expect(out).toEqual(poly);
-    expect(calls[0].url).toBe("https://api.openrouteservice.org/v2/isochrones/foot-walking");
+    expect(calls[0].url).toBe("https://api.heigit.org/openrouteservice/v2/isochrones/foot-walking");
     const body = JSON.parse(calls[0].init.body as string);
     expect(body.locations).toEqual([[20, 10]]);
     expect(body.range).toEqual([900]);
@@ -188,7 +188,7 @@ describe("geocode", () => {
     const out = await client.geocode("Berlin & more");
     expect(out).toEqual([{ coordinate: { lat: 52.5, lng: 13.4 }, label: "Berlin, Germany" }]);
     const url = new URL(calls[0].url);
-    expect(url.pathname).toBe("/geocode/search");
+    expect(url.pathname).toBe("/pelias/v1/search");
     expect(url.searchParams.get("text")).toBe("Berlin & more");
     expect(calls[0].init.method).toBe("GET");
     expectKeyOnlyInHeader(calls[0]);

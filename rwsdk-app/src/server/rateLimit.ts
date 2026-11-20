@@ -25,11 +25,9 @@
  * redirects to): matrix 500/day and 40/min, isochrones 500/day and 20/min,
  * geocode search 1000/day and 100/min. One uncached action costs one ORS
  * request (find: one matrix call; isochrone: one isochrones call; geocode:
- * one /geocode/search call). These are the quotas on api.heigit.org. ORS
- * announced (2026-08-27, ask.openrouteservice.org/t/8013) that the
- * deprecated api.openrouteservice.org host, which ors/client.ts still uses,
- * only gets 10% of them and will be shut down; at 10% every drain time
- * below is divided by 10.
+ * one /geocode/search call). These are the quotas on api.heigit.org, which
+ * ors/client.ts now uses. The deprecated api.openrouteservice.org host only
+ * got 10% of them (ask.openrouteservice.org/t/8013) and is being shut down.
  *
  * | action    | limit | one IP drains the daily quota in | IPs to hit the ORS per-minute quota |
  * | --------- | ----- | -------------------------------- | ----------------------------------- |

@@ -4,11 +4,11 @@
  * (src/server/ors/client.ts), caching and error mapping all run unchanged.
  *
  * Endpoints (request and response shapes as the client sends and parses them):
- *   POST /v2/matrix/{profile}      { locations: [lng, lat][], sources, destinations, metrics: ["duration"] }
+ *   POST /openrouteservice/v2/matrix/{profile}      { locations: [lng, lat][], sources, destinations, metrics: ["duration"] }
  *                                  -> { durations: (seconds | null)[sources][destinations] }
- *   POST /v2/isochrones/{profile}  { locations: [[lng, lat]], range: [seconds], range_type: "time", smoothing }
+ *   POST /openrouteservice/v2/isochrones/{profile}  { locations: [[lng, lat]], range: [seconds], range_type: "time", smoothing }
  *                                  -> GeoJSON FeatureCollection, features[0].geometry is a Polygon
- *   GET  /geocode/search?text=&size=&layers=
+ *   GET  /pelias/v1/search?text=&size=&layers=
  *                                  -> GeoJSON FeatureCollection of Points with properties.label
  *
  * Key-in-header guard: every ORS request must carry `Authorization: <key>`
@@ -163,7 +163,7 @@ export async function startOrsStub(opts: { apiKey: string; port: number; host?: 
       return reject(res, 401, `${req.method} ${url.pathname}: Authorization header is not the bare test key`);
     }
 
-    const ors = /^\/v2\/(matrix|isochrones)\/([a-z-]+)$/.exec(url.pathname);
+    const ors = /^\/openrouteservice\/v2\/(matrix|isochrones)\/([a-z-]+)$/.exec(url.pathname);
     if (ors && req.method === "POST") {
       const [, kind, profile] = ors;
       const kmh = SPEED_KMH[profile];
@@ -231,7 +231,7 @@ export async function startOrsStub(opts: { apiKey: string; port: number; host?: 
       });
     }
 
-    if (url.pathname === "/geocode/search" && req.method === "GET") {
+    if (url.pathname === "/pelias/v1/search" && req.method === "GET") {
       stats.geocode += 1;
       const text = url.searchParams.get("text")?.trim().toLowerCase();
       if (!text) return reject(res, 400, "geocode: text is required");

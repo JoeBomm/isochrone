@@ -31,7 +31,15 @@ export interface OrsClientOptions {
   baseUrl?: string;
 }
 
-export const ORS_BASE_URL = "https://api.openrouteservice.org";
+/**
+ * HeiGIT unified host. api.openrouteservice.org is deprecated (reduced quota,
+ * to be shut down); its quota on this host is the one shown in the dashboard.
+ * Paths are api.heigit.org/<service>/<version>/..., see
+ * https://ask.openrouteservice.org/t/deprecating-api-openrouteservice-org-in-favour-of-api-heigit-org/7912
+ */
+export const ORS_BASE_URL = "https://api.heigit.org";
+const ORS_PATH = "/openrouteservice/v2"; // matrix, isochrones
+const GEOCODE_PATH = "/pelias/v1"; // was /geocode on the old host
 
 /**
  * Docs checked 2026-11-19:
@@ -103,7 +111,7 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
         destinations: destinations.map((_, i) => origins.length + i),
         metrics: ["duration"],
       };
-      const data = await request(`${baseUrl}/v2/matrix/${mode}`, {
+      const data = await request(`${baseUrl}${ORS_PATH}/matrix/${mode}`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(body),
@@ -117,7 +125,7 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
     },
 
     async isochrone(center, minutes, mode) {
-      const data = await request(`${baseUrl}/v2/isochrones/${mode}`, {
+      const data = await request(`${baseUrl}${ORS_PATH}/isochrones/${mode}`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json", Accept: "application/geo+json" },
         body: JSON.stringify({
@@ -140,7 +148,7 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
         size: "5",
         layers: "address,venue,street",
       });
-      const data = await request(`${baseUrl}/geocode/search?${params}`, {
+      const data = await request(`${baseUrl}${GEOCODE_PATH}/search?${params}`, {
         method: "GET",
         headers: { ...authHeaders, Accept: "application/json" },
       });
