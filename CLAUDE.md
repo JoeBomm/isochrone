@@ -23,7 +23,7 @@ npm run check                    # regenerate Worker types + tsc
 npx vitest run src/server/rateLimit.test.ts   # one file
 ```
 
-CI (`.github/workflows/ci.yml`): PRs run all checks and upload a non-deployed staging preview version (`wrangler versions upload --preview-alias pr-<n>`) whose URL is commented on the PR; pushes to `main` run the checks, then deploy staging, then production (`production` GitHub Environment). Needs repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Manual deploy (never `npm run release`, see quirks). The environment is chosen at **build time** by `CLOUDFLARE_ENV`:
+CI (`.github/workflows/ci.yml`): PRs run all checks and upload a non-deployed staging preview version (`wrangler versions upload --preview-alias <branch>` (branch name reduced to a hostname-safe alias, hashed if it had to change)) whose URL is commented on the PR; pushes to `main` run the checks, then deploy staging, then production (`production` GitHub Environment). Needs repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. Manual deploy (never `npm run release`, see quirks). The environment is chosen at **build time** by `CLOUDFLARE_ENV`:
 
 ```bash
 CLOUDFLARE_ENV=staging npm run build && CLOUDFLARE_ENV=staging npx wrangler deploy
