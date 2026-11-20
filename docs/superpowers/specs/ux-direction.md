@@ -1,6 +1,6 @@
-# UX direction: "Halfway" meeting-point finder
+# UX direction: "Where To Meet?" meeting-point finder
 
-Status: APPROVED by the user as written (plan Task 7, Step 1), including the placeholder name "Halfway", dark mode in v1, and the proposed goal labels.
+Status: APPROVED by the user as written (plan Task 7, Step 1), including the name "Where To Meet?", dark mode in v1, and the proposed goal labels.
 
 ## Subject and job
 
@@ -50,7 +50,7 @@ Desktop (>= 960px): a 400px left panel (form, then results) and a map filling th
 
 ```
 +-----------------+-------------------------------+
-| Halfway         |                               |
+| Where To Meet? |                                       |
 | People          |                               |
 |  o Ana  [x]     |             MAP               |
 |  o Ben  [x]     |    (pins, results, isochrone) |
@@ -92,6 +92,6 @@ Button (primary harbour / secondary outline / quiet), Field (label, hint, error)
 
 ## Decisions that are yours
 
-- Name shown in the header ("Halfway" is a placeholder).
+- Name shown in the header ("Where To Meet?").
 - Whether dark mode ships in v1 (proposed: yes, tokens make it cheap).
 - Goal labels in the UI (proposed: Fairest for everyone = MINIMAX, Least total travel = MINIMIZE_TOTAL, Most similar times = MINIMIZE_VARIANCE).

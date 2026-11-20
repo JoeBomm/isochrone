@@ -55,7 +55,7 @@ describe("server functions are data-only POST queries", () => {
     // No page tree in the payload. "/" renders the client HomePage, so a page
     // render shows up as its client reference ("HomePage.tsx#HomePage").
     expect(body).not.toContain("HomePage");
-    expect(body).not.toContain("Halfway");
+    expect(body).not.toContain("Where To Meet?");
     expect(body).not.toContain("app-title");
   });
 

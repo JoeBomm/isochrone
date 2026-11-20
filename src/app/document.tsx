@@ -14,7 +14,7 @@ export const Document: React.FC<{ children: React.ReactNode }> = ({
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="color-scheme" content="light dark" />
-      <title>Halfway: find a fair place to meet</title>
+      <title>Where To Meet?: find a fair place to meet</title>
       <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       <link rel="stylesheet" href={styles} />
       <link rel="modulepreload" href="/src/client.tsx" />

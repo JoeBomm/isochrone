@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-"Halfway": finds fair meeting points for several participants. A RedwoodSDK (rwsdk) app on Cloudflare Workers (React Server Components, KV cache, Workers Rate Limiting), using the openrouteservice (ORS) APIs on `api.heigit.org`. It generates candidate points, scores them with **one** ORS Matrix call, ranks them by goal (`MINIMAX` default, `MINIMIZE_TOTAL`, `MINIMIZE_VARIANCE`), and draws an isochrone on demand for the chosen point. Live at https://wheretomeet.us (staging: https://staging.wheretomeet.us). `README.md` has the user-facing overview.
+"Where To Meet?": finds fair meeting points for several participants. A RedwoodSDK (rwsdk) app on Cloudflare Workers (React Server Components, KV cache, Workers Rate Limiting), using the openrouteservice (ORS) APIs on `api.heigit.org`. It generates candidate points, scores them with **one** ORS Matrix call, ranks them by goal (`MINIMAX` default, `MINIMIZE_TOTAL`, `MINIMIZE_VARIANCE`), and draws an isochrone on demand for the chosen point. Live at https://wheretomeet.us (staging: https://staging.wheretomeet.us). `README.md` has the user-facing overview.
 
 The repo previously held a RedwoodJS (GraphQL/Prisma/Redis) app. It was removed; it lives in git history and on the `snapshot/pre-rwsdk-rewrite` branch.
 

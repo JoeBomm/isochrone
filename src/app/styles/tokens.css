@@ -1,5 +1,5 @@
 /*
- * Design tokens for "Halfway" (docs/superpowers/specs/ux-direction.md).
+ * Design tokens for "Where To Meet?" (docs/superpowers/specs/ux-direction.md).
  *
  * Colour values are checked for WCAG AA by src/app/styles/contrast.test.ts,
  * which parses this file. Keep every colour as a 6-digit hex so the test can

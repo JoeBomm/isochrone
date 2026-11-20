@@ -6,7 +6,7 @@ import { BottomSheet, nextSnap } from "./BottomSheet";
 function renderSheet(props: Partial<Parameters<typeof BottomSheet>[0]> = {}) {
   return render(
     <>
-      <h1 id="title">Halfway</h1>
+      <h1 id="title">Where To Meet?</h1>
       <BottomSheet labelledBy="title" {...props}>
         <p>Panel content</p>
       </BottomSheet>
@@ -14,7 +14,7 @@ function renderSheet(props: Partial<Parameters<typeof BottomSheet>[0]> = {}) {
   );
 }
 
-const region = () => screen.getByRole("region", { name: "Halfway" });
+const region = () => screen.getByRole("region", { name: "Where To Meet?" });
 const handle = () => screen.getAllByRole("button")[0];
 
 describe("nextSnap", () => {
@@ -140,7 +140,7 @@ describe("BottomSheet", () => {
     expect(region().getAttribute("data-snap")).toBe("full");
     rerender(
       <>
-        <h1 id="title">Halfway</h1>
+        <h1 id="title">Where To Meet?</h1>
         <BottomSheet labelledBy="title" snap="peek" onSnapChange={onSnapChange}>
           <p>Panel content</p>
         </BottomSheet>
@@ -162,7 +162,7 @@ describe("BottomSheet", () => {
 
     rerender(
       <>
-        <h1 id="title">Halfway</h1>
+        <h1 id="title">Where To Meet?</h1>
         <BottomSheet labelledBy="title">
           <p>Panel content</p>
         </BottomSheet>
