@@ -3,6 +3,7 @@ import { CACHE_TTL } from "../domain/constants";
 import { haversineMeters } from "../domain/geometry";
 import type { Coordinate } from "../domain/types";
 import {
+  GEOCODE_CACHE_NAMESPACE,
   handleFindMeetingPoints,
   handleGeocode,
   handleIsochrone,
@@ -300,7 +301,7 @@ describe("handleGeocode", () => {
     const r = await handleGeocode("  Berlin   Hbf ", s.deps);
     expect(r).toEqual({ ok: true, data: { results: [{ coordinate: A, label: "Somewhere" }] } });
     expect(s.geocode).toHaveBeenCalledWith("Berlin Hbf");
-    const key = await cacheKey("geocode", ["berlin hbf"]);
+    const key = await cacheKey(GEOCODE_CACHE_NAMESPACE, ["berlin hbf"]);
     expect(s.kv.puts[0]).toEqual({ key, ttl: CACHE_TTL.GEOCODE_SECONDS });
     const r2 = await handleGeocode("berlin HBF", s.deps);
     expect(r2.ok).toBe(true);

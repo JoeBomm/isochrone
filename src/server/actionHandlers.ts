@@ -153,6 +153,13 @@ const isGeometry = (v: unknown): v is GeoPolygon | GeoMultiPolygon =>
   ((v as { type?: unknown }).type === "Polygon" || (v as { type?: unknown }).type === "MultiPolygon") &&
   Array.isArray((v as { coordinates?: unknown }).coordinates);
 
+/**
+ * Cache-key namespace for geocode results. Changed from "geocode" when the
+ * client moved from Pelias /search to /autocomplete, so week-old /search
+ * results in KV are not served.
+ */
+export const GEOCODE_CACHE_NAMESPACE = "geocode-autocomplete";
+
 const isGeocodeResults = (v: unknown): v is GeocodeResult[] =>
   Array.isArray(v) &&
   v.length > 0 &&
@@ -217,7 +224,7 @@ export function handleGeocode(
     async (ors) => {
       // Geocoding is case-insensitive, so the cache key folds case; ORS gets
       // the trimmed, whitespace-collapsed query.
-      const key = await cacheKey("geocode", [q.toLowerCase()]);
+      const key = await cacheKey(GEOCODE_CACHE_NAMESPACE, [q.toLowerCase()]);
       const results = await cached(
         deps.env.CACHE,
         key,

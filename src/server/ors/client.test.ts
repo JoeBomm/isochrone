@@ -188,8 +188,9 @@ describe("geocode", () => {
     const out = await client.geocode("Berlin & more");
     expect(out).toEqual([{ coordinate: { lat: 52.5, lng: 13.4 }, label: "Berlin, Germany" }]);
     const url = new URL(calls[0].url);
-    expect(url.pathname).toBe("/pelias/v1/search");
+    expect(url.pathname).toBe("/pelias/v1/autocomplete");
     expect(url.searchParams.get("text")).toBe("Berlin & more");
+    expect(url.searchParams.has("layers")).toBe(false);
     expect(calls[0].init.method).toBe("GET");
     expectKeyOnlyInHeader(calls[0]);
   });

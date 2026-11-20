@@ -142,13 +142,15 @@ export function createOrsClient(opts: OrsClientOptions): OrsClient {
       return geom;
     },
 
+    /**
+     * Pelias /autocomplete, not /search: the address field queries as the
+     * user types, and /search parses partial input badly (e.g. "1600 Penn"
+     * loses the house number and returns streets named "Penn"). No `layers`
+     * filter, so towns and regions come back as well as addresses and venues.
+     */
     async geocode(query) {
-      const params = new URLSearchParams({
-        text: query,
-        size: "5",
-        layers: "address,venue,street",
-      });
-      const data = await request(`${baseUrl}${GEOCODE_PATH}/search?${params}`, {
+      const params = new URLSearchParams({ text: query, size: "5" });
+      const data = await request(`${baseUrl}${GEOCODE_PATH}/autocomplete?${params}`, {
         method: "GET",
         headers: { ...authHeaders, Accept: "application/json" },
       });
