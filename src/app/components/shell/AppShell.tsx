@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { BottomSheet, type SheetSnap } from "./BottomSheet";
 
-export const APP_NAME = "Halfway"; // placeholder name (ux-direction.md)
+export const APP_NAME = "Where To Meet?";
 
 export interface AppShellProps {
   /** Panel content (form, results). */

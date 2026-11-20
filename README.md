@@ -1,6 +1,6 @@
-# Halfway
+# Where To Meet?
 
-Find a fair place to meet. Add two or more starting points, pick how people are travelling, and Halfway
+Find a fair place to meet. Add two or more starting points, pick how people are travelling, and Where To Meet?
 suggests meeting points that keep everyone's journey as even as it can (by default, it minimizes the
 longest trip). Pick one and it draws the area reachable from it within a chosen number of minutes.
 
