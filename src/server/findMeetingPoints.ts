@@ -3,12 +3,17 @@ import {
   CACHE_TTL,
   DEDUP_THRESHOLD_METERS,
   GRID_SIZE,
+  MAX_PLACES_PER_POINT,
+  POI_MAX_ATTEMPTS,
+  POI_MAX_BUFFER_METERS,
+  POI_MIN_BUFFER_METERS,
+  POI_RADIUS_SPEED_MPS,
   TOP_M,
   VALIDATION_LIMITS,
 } from "../domain/constants";
 import { dedupe } from "../domain/dedupe";
 import { scoreCandidates, type ScoredCandidate } from "../domain/scoring";
-import type { Candidate, Coordinate, OptimizationGoal, TravelMode } from "../domain/types";
+import type { Candidate, Coordinate, OptimizationGoal, Place, PlaceType, TravelMode } from "../domain/types";
 import { cached, cacheKey } from "./cache";
 import type { OrsClient } from "./ors/client";
 
@@ -26,6 +31,13 @@ export class NoReachablePointError extends Error {
   }
 }
 
+export class NoPlacesError extends NoReachablePointError {
+  constructor(type: PlaceType) {
+    super(`No ${type} places were found near the fairest meeting points. Try another place type or a longer travel time.`);
+    this.name = "NoPlacesError";
+  }
+}
+
 export interface FindMeetingPointsInput {
   participants: Coordinate[];
   mode: TravelMode;
@@ -33,6 +45,10 @@ export interface FindMeetingPointsInput {
   topM?: number;
   gridSize?: number;
   dedupeMeters?: number;
+  /** Optional: only return points with at least one place of this type nearby. */
+  placeType?: PlaceType;
+  /** Travel minutes the place radius is derived from (default 15). */
+  minutes?: number;
 }
 
 export interface FindMeetingPointsResult {
@@ -40,6 +56,16 @@ export interface FindMeetingPointsResult {
   candidatesEvaluated: number;
   matrixCalls: 1;
   debugCandidates: Candidate[];
+  /** Only with a placeType: places per point id, nearest first. */
+  places?: Record<string, Place[]>;
+  /** Only with a placeType: how far from each point the places were searched. */
+  placeRadiusMeters?: number;
+}
+
+/** Straight-line search radius for N minutes of travel, within the POI service's limits. */
+export function placeRadiusMeters(minutes: number, mode: TravelMode): number {
+  const raw = minutes * 60 * POI_RADIUS_SPEED_MPS[mode];
+  return Math.round(Math.min(POI_MAX_BUFFER_METERS, Math.max(POI_MIN_BUFFER_METERS, raw)));
 }
 
 const L = VALIDATION_LIMITS;
@@ -86,6 +112,20 @@ function validate(input: FindMeetingPointsInput) {
   return { topM, gridSize, dedupeMeters };
 }
 
+function isPlaceList(v: unknown): v is Place[] {
+  return (
+    Array.isArray(v) &&
+    v.every(
+      (p) =>
+        p &&
+        typeof p.id === "string" &&
+        typeof p.name === "string" &&
+        Number.isFinite(p.coordinate?.lat) &&
+        Number.isFinite(p.coordinate?.lng),
+    )
+  );
+}
+
 function isMatrixOf(rows: number, cols: number) {
   return (v: unknown): v is (number | null)[][] =>
     Array.isArray(v) &&
@@ -123,8 +163,35 @@ export async function findMeetingPoints(
   const scored = scoreCandidates(times, candidates, goal);
   if (scored.length === 0) throw new NoReachablePointError();
 
+  const ranked = dedupe(scored, dedupeMeters);
+  if (input.placeType) {
+    const radius = placeRadiusMeters(input.minutes ?? 15, mode);
+    const type = input.placeType;
+    const points: ScoredCandidate[] = [];
+    const places: Record<string, Place[]> = {};
+    for (const point of ranked.slice(0, POI_MAX_ATTEMPTS)) {
+      if (points.length >= topM) break;
+      const key = await cacheKey("places", [point.coordinate, type, radius]);
+      const found = await cached(
+        deps.kv,
+        key,
+        CACHE_TTL.PLACES_SECONDS,
+        () => deps.ors.places(point.coordinate, type, radius, MAX_PLACES_PER_POINT),
+        isPlaceList,
+      );
+      if (found.length > 0) {
+        points.push(point);
+        places[point.id] = found;
+      }
+    }
+    if (points.length === 0) {
+      throw new NoPlacesError(type);
+    }
+    return { points, candidatesEvaluated: candidates.length, matrixCalls: 1, debugCandidates: candidates, places, placeRadiusMeters: radius };
+  }
+
   return {
-    points: dedupe(scored, dedupeMeters).slice(0, topM),
+    points: ranked.slice(0, topM),
     candidatesEvaluated: candidates.length,
     matrixCalls: 1,
     debugCandidates: candidates,

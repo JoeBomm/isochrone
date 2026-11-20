@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { MeetingForm, type MeetingFormValues } from "@/app/components/MeetingForm";
+import { MeetingForm, type MeetingFormValues, type PersonSummary, type ResolvedPerson } from "@/app/components/MeetingForm";
 import { MeetingMap } from "@/app/components/MeetingMap";
 import type { Coordinate } from "@/domain/types";
 import { GOALS } from "@/app/components/participants";
@@ -18,6 +18,7 @@ import {
   type IsochroneView,
   type ScoredCandidate,
   type SearchState,
+  placeViews,
 } from "@/app/components/results";
 import { AppShell } from "@/app/components/shell/AppShell";
 import type { SheetSnap } from "@/app/components/shell/BottomSheet";
@@ -83,6 +84,10 @@ export interface HomePageProps {
 export function HomePage({ debug, initialCenter }: HomePageProps) {
   const [search, setSearch] = useState<SearchState>({ status: "idle" });
   const [values, setValues] = useState<MeetingFormValues | null>(null);
+  // Resolved people in the form right now (shown on the map before any search).
+  const [placed, setPlaced] = useState<ResolvedPerson[]>([]);
+  const placedCoordinates = useMemo(() => placed.map((p) => p.coordinate), [placed]);
+  const placedPeople = useMemo<PersonSummary[]>(() => placed.map((p) => p.person), [placed]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [iso, setIso] = useState<IsoState>({ status: "idle" });
   const [retryIn, setRetryIn] = useState<number | null>(null);
@@ -252,6 +257,18 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
         }
       : null;
 
+  // Places per result, with the selected one classified once its isochrone is
+  // ready (a client-side point-in-polygon test, no extra API call).
+  const resultPlaces = search.status === "success" ? search.result.places : undefined;
+  const selectedGeometry = iso.status === "ready" && iso.pointId === selectedId ? iso.geometry : null;
+  const placesById = useMemo(() => {
+    if (!resultPlaces) return undefined;
+    return Object.fromEntries(
+      Object.entries(resultPlaces).map(([id, list]) => [id, placeViews(list, id === selectedId ? selectedGeometry : null)]),
+    );
+  }, [resultPlaces, selectedId, selectedGeometry]);
+  const selectedPlaces = selectedId ? placesById?.[selectedId] : undefined;
+
   const goalLabel = GOALS.find((g) => g.value === values?.input.goal)?.label ?? GOALS[0].label;
   const pending = search.status === "loading";
   const blocked = Boolean(retryIn);
@@ -260,12 +277,13 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
   const map = (
     <MeetingMap
       initialCenter={initialCenter}
-      participants={values?.input.participants ?? emptyList}
-      people={values?.people ?? emptyList}
+      participants={placedCoordinates}
+      people={placedPeople}
       results={points.length ? points : emptyList}
       selectedId={selectedId}
       onSelect={select}
       isochrone={iso.status === "ready" && iso.pointId === selectedId ? iso.geometry : null}
+      places={selectedPlaces}
       debugCandidates={debug && search.status === "success" ? search.result.debugCandidates : undefined}
       bottomInset={sheetInsetPx(snap, viewport)}
     />
@@ -308,6 +326,7 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
         blocked={blocked}
         onSubmit={(next) => void runSearch(next)}
         onCanSubmitChange={setCanSubmit}
+        onPlacesChange={setPlaced}
         onInvalid={() => flushSync(() => setSnap((s) => (s === "peek" ? "half" : s)))}
       />
       <ResultsPanel
@@ -321,6 +340,7 @@ export function HomePage({ debug, initialCenter }: HomePageProps) {
         retryIn={retryIn}
         goalLabel={goalLabel}
         isochrone={isochroneView}
+        places={placesById}
         debugCount={debug && search.status === "success" ? search.result.debugCandidates.length : null}
         headingRef={headingRef}
       />

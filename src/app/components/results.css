@@ -473,3 +473,52 @@
     animation: none;
   }
 }
+
+/* Places near a result (OSM). Text carries the inside/outside state; colour and
+   opacity only reinforce it. */
+.places {
+  margin: var(--space-3) 0 0;
+  padding: 0 0 0 calc(1.75rem + var(--space-3));
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.places__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.places__name {
+  font-weight: var(--weight-bold);
+}
+
+.places__address,
+.places__status {
+  color: var(--ink-muted);
+}
+
+.places__item--outside .places__name {
+  font-weight: normal;
+  color: var(--ink-muted);
+}
+
+.map-place__dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--harbour);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.map-place--unknown .map-place__dot {
+  background: var(--ink-muted);
+}
+
+.map-place--outside .map-place__dot {
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--ink-muted);
+  opacity: 0.7;
+}

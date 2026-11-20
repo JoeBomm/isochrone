@@ -1,20 +1,24 @@
 "use client";
 
 import { useId } from "react";
-import type { OptimizationGoal, TravelMode } from "@/domain/types";
+import type { OptimizationGoal, PlaceType, TravelMode } from "@/domain/types";
 import { Select } from "./ui/Select";
-import { GOALS, ISOCHRONE_MINUTE_OPTIONS, TRAVEL_MODES } from "./participants";
+import { GOALS, ISOCHRONE_MINUTE_OPTIONS, PLACE_TYPE_OPTIONS, TRAVEL_MODES } from "./participants";
 
 export interface TripOptionsProps {
   mode: TravelMode;
   goal: OptimizationGoal;
   minutes: number;
+  /** "" = no place type (today's behaviour). */
+  placeType: PlaceType | "";
   onModeChange: (mode: TravelMode) => void;
   onGoalChange: (goal: OptimizationGoal) => void;
   onMinutesChange: (minutes: number) => void;
+  onPlaceTypeChange: (placeType: PlaceType | "") => void;
 }
 
 const GOAL_OPTIONS = GOALS.map((g) => ({ value: g.value, label: g.label }));
+const PLACE_OPTIONS = [{ value: "", label: "Any (no place filter)" }, ...PLACE_TYPE_OPTIONS];
 const MINUTE_OPTIONS = ISOCHRONE_MINUTE_OPTIONS.map((m) => ({
   value: String(m),
   label: `${m} minutes`,
@@ -28,9 +32,11 @@ export function TripOptions({
   mode,
   goal,
   minutes,
+  placeType,
   onModeChange,
   onGoalChange,
   onMinutesChange,
+  onPlaceTypeChange,
 }: TripOptionsProps) {
   const base = `trip${useId().replace(/:/g, "")}`;
   const legendId = `${base}-travel`;
@@ -69,6 +75,14 @@ export function TripOptions({
         options={GOAL_OPTIONS}
         value={goal}
         onChange={(event) => onGoalChange(event.target.value as OptimizationGoal)}
+      />
+
+      <Select
+        label="Place type"
+        hint="Optional. Only suggests meeting points with a place of this type within about 2 km."
+        options={PLACE_OPTIONS}
+        value={placeType}
+        onChange={(event) => onPlaceTypeChange(event.target.value as PlaceType | "")}
       />
 
       <Select

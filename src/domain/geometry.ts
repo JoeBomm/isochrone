@@ -96,3 +96,29 @@ export function gridInBox(box: BBox, size: number): Coordinate[] {
   }
   return out;
 }
+
+/** Structural GeoJSON polygon shapes ([lng, lat] positions), so the domain stays free of server types. */
+export type PolygonalGeometry =
+  | { type: "Polygon"; coordinates: number[][][] }
+  | { type: "MultiPolygon"; coordinates: number[][][][] };
+
+function inRing(c: Coordinate, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > c.lat !== yj > c.lat && c.lng < ((xj - xi) * (c.lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function inPolygon(c: Coordinate, rings: number[][][]): boolean {
+  const [outer, ...holes] = rings;
+  return !!outer && inRing(c, outer) && !holes.some((h) => inRing(c, h));
+}
+
+/** Ray-casting point-in-polygon for a GeoJSON Polygon or MultiPolygon (holes respected). */
+export function pointInPolygon(c: Coordinate, geometry: PolygonalGeometry): boolean {
+  const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  return polygons.some((rings) => inPolygon(c, rings));
+}

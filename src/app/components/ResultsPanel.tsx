@@ -2,11 +2,12 @@
 
 import { useId, type Ref } from "react";
 import type { PersonSummary } from "./participants";
-import { ResultsList } from "./ResultsList";
+import { ResultsList, type ResultsListProps } from "./ResultsList";
 import {
   COPY,
   errorCopy,
   formatMinutes,
+  formatRadius,
   retrySeconds,
   type IsochroneView,
   type ScoredCandidate,
@@ -30,6 +31,8 @@ export interface ResultsPanelProps {
   isochrone?: IsochroneView | null;
   /** Only with ?debug=1: number of candidate points drawn on the map. */
   debugCount?: number | null;
+  /** Places per result id; see ResultsList. */
+  places?: ResultsListProps["places"];
   headingRef?: Ref<HTMLHeadingElement>;
 }
 
@@ -54,6 +57,7 @@ export function ResultsPanel({
   goalLabel,
   isochrone,
   debugCount,
+  places,
   headingRef,
 }: ResultsPanelProps) {
   const headingId = `results${useId().replace(/:/g, "")}`;
@@ -73,12 +77,19 @@ export function ResultsPanel({
           <p className="muted results-panel__intro">
             Ranked by {goalLabel.toLowerCase()}. Bars show each person's travel time on the same scale.
           </p>
+          {state.result.placeRadiusMeters ? (
+            <p className="muted results-panel__intro">
+              Places listed are within about {formatRadius(state.result.placeRadiusMeters)} of each meeting point.
+              Select a point to see which are inside its travel area.
+            </p>
+          ) : null}
           <ResultsList
             results={state.result.points}
             people={people}
             selectedId={selectedId}
             onSelect={onSelect}
             isochrone={isochrone}
+            places={places}
           />
           {debugCount != null ? (
             <p className="results-panel__debug">

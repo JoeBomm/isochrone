@@ -237,6 +237,24 @@ describe("MeetingForm: trip options", () => {
     expect(values.isochroneMinutes).toBe(30);
   });
 
+  it("omits placeType by default and sends it with the minutes when chosen", async () => {
+    const { user, onSubmit } = setup();
+    await resolveRow(user, 0, "Carrow Road");
+    await resolveRow(user, 1, "Mill Lane");
+    await user.click(submitButton());
+    expect("placeType" in onSubmit.mock.calls[0][0].input).toBe(false);
+
+    const select = screen.getByRole("combobox", { name: "Place type" });
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Any (no place filter)", "Accommodation", "Bar", "Cafe", "Cinema", "Gym", "Library", "Museum", "Park",
+      "Playground", "Restaurant", "Shops",
+    ]);
+    await user.selectOptions(select, "cafe");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Minutes for isochrone" }), "20");
+    await user.click(submitButton());
+    expect(onSubmit.mock.calls[1][0].input).toMatchObject({ placeType: "cafe", minutes: 20 });
+  });
+
   it("offers isochrone minutes only within the server range", () => {
     setup();
     const values = within(screen.getByRole("combobox", { name: "Minutes for isochrone" }))
@@ -311,7 +329,7 @@ describe("MeetingForm: keyboard", () => {
     (document.activeElement as HTMLElement).blur();
 
     const order: string[] = [];
-    for (let i = 0; i < 11; i += 1) {
+    for (let i = 0; i < 12; i += 1) {
       await user.tab();
       const el = document.activeElement as HTMLElement;
       order.push(
@@ -333,6 +351,7 @@ describe("MeetingForm: keyboard", () => {
       "Add person",
       "Car", // the radio group is one tab stop (the checked radio)
       "Goal",
+      "Place type",
       "Minutes for isochrone",
       "Find meeting points",
     ]);
