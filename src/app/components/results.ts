@@ -1,5 +1,6 @@
 import type { ScoredCandidate } from "@/domain/scoring";
-import type { Coordinate } from "@/domain/types";
+import { medianPoint, pointInPolygon } from "@/domain/geometry";
+import type { Coordinate, Place } from "@/domain/types";
 import type { ActionError } from "@/server/actionHandlers";
 import type { FindMeetingPointsResult } from "@/server/findMeetingPoints";
 import type { GeoMultiPolygon, GeoPolygon } from "@/server/ors/client";
@@ -145,12 +146,54 @@ export function boundsOf(coords: readonly Coordinate[]): LatLngBounds | null {
   return Number.isFinite(s) ? [[s, w], [n, e]] : null;
 }
 
+/**
+ * Box centred on the per-axis median of `coords` and just large enough to
+ * contain all of them. Fitting it centres the view on the median, so a pair
+ * of close points does not pull the view away from a far one. One point gives
+ * a zero-size box (the caller's max zoom decides how close to get).
+ */
+export function medianFitBounds(coords: readonly Coordinate[]): LatLngBounds | null {
+  const valid = coords.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lng));
+  if (valid.length === 0) return null;
+  const m = medianPoint(valid);
+  const dLat = Math.max(...valid.map((c) => Math.abs(c.lat - m.lat)));
+  const dLng = Math.max(...valid.map((c) => Math.abs(c.lng - m.lng)));
+  return [
+    [m.lat - dLat, m.lng - dLng],
+    [m.lat + dLat, m.lng + dLng],
+  ];
+}
+
 /** Every vertex of a GeoJSON Polygon/MultiPolygon as {lat,lng}. */
 export function geometryCoordinates(geometry: IsochroneGeometry): Coordinate[] {
   const polygons = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
   const out: Coordinate[] = [];
   for (const rings of polygons) for (const ring of rings) for (const [lng, lat] of ring) out.push({ lat, lng });
   return out;
+}
+
+/** A place plus where it sits against the selected point's isochrone (null = not loaded yet). */
+export interface PlaceView {
+  place: Place;
+  inside: boolean | null;
+}
+
+/**
+ * Classify places against an isochrone with a point-in-polygon test (no API
+ * call). Without a polygon every place is "unknown". With one, places inside
+ * come first; order is otherwise kept (the server sends nearest first).
+ */
+export function placeViews(places: readonly Place[], geometry: IsochroneGeometry | null): PlaceView[] {
+  const views = places.map((place) => ({
+    place,
+    inside: geometry ? pointInPolygon(place.coordinate, geometry) : null,
+  }));
+  return geometry ? [...views.filter((v) => v.inside), ...views.filter((v) => !v.inside)] : views;
+}
+
+/** "1.1 km" / "250 m": the place-search radius for display. */
+export function formatRadius(meters: number): string {
+  return meters >= 1000 ? `${Math.round(meters / 100) / 10} km` : `${Math.round(meters)} m`;
 }
 
 /** Desktop breakpoint, matching shell.css. */

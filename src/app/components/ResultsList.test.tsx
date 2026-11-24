@@ -262,3 +262,35 @@ describe("ResultsPanel states", () => {
     expect(screen.getByText("Debug: the map shows all 40 candidate points.")).toBeTruthy();
   });
 });
+
+describe("ResultsList places", () => {
+  const pts = [point("c1", [600, 900])];
+  const place = { id: "1/1", name: "Joe's Cafe", type: "cafe" as const, coordinate: { lat: 1, lng: 1 }, address: "12 Main St" };
+
+  it("lists places with address and, once known, inside/outside as text", () => {
+    render(
+      <ResultsList
+        results={pts}
+        people={people}
+        selectedId="c1"
+        onSelect={() => {}}
+        places={{ c1: [{ place, inside: true }, { place: { ...place, id: "1/2", name: "Far Cafe", address: "9 Far Rd" }, inside: false }] }}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "Places nearby" });
+    expect(within(list).getByText("Joe's Cafe")).toBeTruthy();
+    expect(within(list).getByText("12 Main St")).toBeTruthy();
+    expect(within(list).getByText("In travel area")).toBeTruthy();
+    expect(within(list).getByText("Outside travel area")).toBeTruthy();
+  });
+
+  it("shows no place list or status before the isochrone loads, nor without places", () => {
+    const { rerender } = render(
+      <ResultsList results={pts} people={people} selectedId={null} onSelect={() => {}} places={{ c1: [{ place, inside: null }] }} />,
+    );
+    expect(screen.queryByText("In travel area")).toBeNull();
+    expect(screen.queryByText("Outside travel area")).toBeNull();
+    rerender(<ResultsList results={pts} people={people} selectedId={null} onSelect={() => {}} />);
+    expect(screen.queryByRole("list", { name: "Places nearby" })).toBeNull();
+  });
+});

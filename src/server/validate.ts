@@ -8,7 +8,7 @@ import {
   TOP_M,
   VALIDATION_LIMITS as L,
 } from "../domain/constants";
-import type { Coordinate, OptimizationGoal, TravelMode } from "../domain/types";
+import { PLACE_TYPES, type Coordinate, type OptimizationGoal, type PlaceType, type TravelMode } from "../domain/types";
 import { ValidationError } from "./findMeetingPoints";
 import { MATRIX_MAX_ROUTES } from "./ors/client";
 
@@ -23,6 +23,7 @@ const TRAVEL_MODES: readonly TravelMode[] = ["driving-car", "cycling-regular", "
 const GOALS: readonly OptimizationGoal[] = ["MINIMAX", "MINIMIZE_TOTAL", "MINIMIZE_VARIANCE"];
 const DEFAULT_MODE: TravelMode = "driving-car";
 const DEFAULT_GOAL: OptimizationGoal = "MINIMAX";
+const DEFAULT_PLACE_MINUTES = 15;
 
 export interface ParsedFindInput {
   participants: Coordinate[];
@@ -31,6 +32,10 @@ export interface ParsedFindInput {
   topM: number;
   gridSize: number;
   dedupeMeters: number;
+  /** Absent = no place search; the request behaves exactly as before. */
+  placeType?: PlaceType;
+  /** Travel time the place-search radius is derived from. Only used with placeType. */
+  minutes?: number;
 }
 
 export interface ParsedIsochroneInput {
@@ -132,7 +137,11 @@ export function parseFindInput(x: unknown): ParsedFindInput {
         `Use fewer participants or a smaller grid size.`,
     );
   }
-  return { participants, mode, goal, topM, gridSize, dedupeMeters };
+  const base = { participants, mode, goal, topM, gridSize, dedupeMeters };
+  if (o.placeType === undefined || o.placeType === null) return base;
+  const placeType = oneOf(o.placeType, PLACE_TYPES, PLACE_TYPES[0], "placeType");
+  const minutes = integer(o.minutes, DEFAULT_PLACE_MINUTES, ISOCHRONE_MINUTES.MIN, ISOCHRONE_MINUTES.MAX, "minutes");
+  return { ...base, placeType, minutes };
 }
 
 export function parseIsochroneInput(x: unknown): ParsedIsochroneInput {

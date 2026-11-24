@@ -7,6 +7,7 @@ import {
   boundingBox,
   gridInBox,
   roundCoordinate,
+  pointInPolygon,
 } from "./geometry";
 
 const finite = (c: { lat: number; lng: number }) =>
@@ -88,5 +89,30 @@ describe("geometry", () => {
   it("roundCoordinate rounds both axes and never returns -0", () => {
     expect(roundCoordinate({ lat: 42.4614, lng: -83.1827 }, 1)).toEqual({ lat: 42.5, lng: -83.2 });
     expect(Object.is(roundCoordinate({ lat: -0.01, lng: 0 }, 1).lat, 0)).toBe(true);
+  });
+});
+
+describe("pointInPolygon", () => {
+  const square = { type: "Polygon" as const, coordinates: [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]] };
+  const hole = [[2, 2], [2, 4], [4, 4], [4, 2], [2, 2]];
+
+  it("inside and outside a polygon (GeoJSON is [lng, lat])", () => {
+    expect(pointInPolygon({ lat: 5, lng: 5 }, square)).toBe(true);
+    expect(pointInPolygon({ lat: 15, lng: 5 }, square)).toBe(false);
+  });
+
+  it("a point in a hole is outside", () => {
+    const g = { type: "Polygon" as const, coordinates: [square.coordinates[0], hole] };
+    expect(pointInPolygon({ lat: 3, lng: 3 }, g)).toBe(false);
+    expect(pointInPolygon({ lat: 6, lng: 6 }, g)).toBe(true);
+  });
+
+  it("MultiPolygon: inside any member", () => {
+    const g = {
+      type: "MultiPolygon" as const,
+      coordinates: [square.coordinates, [[[20, 20], [20, 30], [30, 30], [30, 20], [20, 20]]]],
+    };
+    expect(pointInPolygon({ lat: 25, lng: 25 }, g)).toBe(true);
+    expect(pointInPolygon({ lat: 15, lng: 15 }, g)).toBe(false);
   });
 });

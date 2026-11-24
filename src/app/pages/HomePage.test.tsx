@@ -34,6 +34,14 @@ vi.mock("@/app/components/MeetingMap", () => ({
 vi.mock("@/app/components/MeetingForm", () => ({
   MeetingForm: (props: Record<string, any>) => {
     useEffect(() => props.onCanSubmitChange?.(fakeForm.canSubmit), []);
+    // The real form reports resolved people as soon as they are chosen.
+    useEffect(
+      () =>
+        props.onPlacesChange?.(
+          VALUES.people.map((person, i) => ({ coordinate: VALUES.input.participants[i], person })),
+        ),
+      [],
+    );
     return (
       <form
         id={props.formId}
@@ -161,6 +169,8 @@ describe("HomePage: search states", () => {
 
     expect(screen.queryByRole("region", { name: "Meeting points" })).toBeNull();
     expect(mapProps.last!.results).toEqual([]);
+    // start points are on the map before any search
+    expect(mapProps.last!.participants).toEqual(VALUES.input.participants);
 
     await user.click(submit());
     expect(find).toHaveBeenCalledWith(VALUES.input);

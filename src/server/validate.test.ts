@@ -181,3 +181,20 @@ describe("parseGeocodeQuery", () => {
     rejects(() => parseGeocodeQuery(q));
   });
 });
+
+describe("parseFindInput placeType", () => {
+  const two = [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }];
+  it("omits placeType and minutes when not given (unchanged shape)", () => {
+    const r = parseFindInput({ participants: two });
+    expect("placeType" in r).toBe(false);
+    expect("minutes" in r).toBe(false);
+  });
+  it("accepts a known type with default and explicit minutes", () => {
+    expect(parseFindInput({ participants: two, placeType: "cafe" })).toMatchObject({ placeType: "cafe", minutes: 15 });
+    expect(parseFindInput({ participants: two, placeType: "gym", minutes: 20 })).toMatchObject({ minutes: 20 });
+  });
+  it("rejects unknown types and bad minutes", () => {
+    expect(() => parseFindInput({ participants: two, placeType: "casino" })).toThrow(/placeType/);
+    expect(() => parseFindInput({ participants: two, placeType: "bar", minutes: 0 })).toThrow(/minutes/);
+  });
+});

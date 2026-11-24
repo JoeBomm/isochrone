@@ -5,7 +5,7 @@ import {
   MIN_PARTICIPANTS,
 } from "@/domain/constants";
 import { centroid, roundCoordinate } from "@/domain/geometry";
-import type { Coordinate, OptimizationGoal, TravelMode } from "@/domain/types";
+import type { Coordinate, OptimizationGoal, PlaceType, TravelMode } from "@/domain/types";
 
 /**
  * Form model for the meeting-point form (Task 8). Pure helpers, no React, so
@@ -23,6 +23,10 @@ export interface FindInput {
   participants: Coordinate[];
   mode: TravelMode;
   goal: OptimizationGoal;
+  /** Optional. With it, the server only returns points that have such places nearby. */
+  placeType?: PlaceType;
+  /** Travel minutes the server derives the place-search radius from; sent only with placeType. */
+  minutes?: number;
 }
 
 /** A participant the user has resolved to a geocoded place. */
@@ -79,6 +83,21 @@ export const GOALS: ReadonlyArray<{ value: OptimizationGoal; label: string }> = 
   { value: "MINIMAX", label: "Fairest for everyone" },
   { value: "MINIMIZE_TOTAL", label: "Least total travel" },
   { value: "MINIMIZE_VARIANCE", label: "Most similar times" },
+];
+
+/** Place types for the optional "find a place" filter, alphabetical by label. */
+export const PLACE_TYPE_OPTIONS: ReadonlyArray<{ value: PlaceType; label: string }> = [
+  { value: "accommodation", label: "Accommodation" },
+  { value: "bar", label: "Bar" },
+  { value: "cafe", label: "Cafe" },
+  { value: "cinema", label: "Cinema" },
+  { value: "gym", label: "Gym" },
+  { value: "library", label: "Library" },
+  { value: "museum", label: "Museum" },
+  { value: "park", label: "Park" },
+  { value: "playground", label: "Playground" },
+  { value: "restaurant", label: "Restaurant" },
+  { value: "shop", label: "Shops" },
 ];
 
 /** Isochrone minute choices, limited to the server's accepted range. */
